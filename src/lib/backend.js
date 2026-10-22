@@ -5,7 +5,7 @@ import { sanitizeSettings } from './logic.js';
  * mode: null (ainda verificando) | 'server' (Cloudflare Functions + D1 configurados) | 'local' (só navegador).
  * No modo local tudo continua funcionando, mas as edições ficam apenas no aparelho de quem editou.
  */
-export const backend = { mode: null, admin: false, adminConfigured: false, seeded: false };
+export const backend = { mode: null, admin: false, seeded: false };
 
 /** Configurações editáveis da loja (objeto compartilhado e mutável). */
 export const settings = { ...DEFAULT_SETTINGS };
@@ -36,6 +36,17 @@ export async function api(method, path, body, timeoutMs = 20000) {
 export const fetchCatalog = (all = false) => api('GET', `/api/catalog${all ? '?all=1' : ''}`, undefined, 8000);
 
 const MESSAGES = {
+  invalid_credentials: 'Usuário ou senha incorretos.',
+  invalid_setup_key: 'Chave de configuração incorreta.',
+  setup_not_configured: 'A chave de configuração (ADMIN_PASSWORD) ainda não foi cadastrada na Cloudflare.',
+  already_setup: 'A conta do dono já foi criada. Use “Entrar”.',
+  username_taken: 'Esse usuário já existe. Escolha outro.',
+  user_not_found: 'Usuário não encontrado.',
+  wrong_current_password: 'A senha atual está incorreta.',
+  last_owner: 'A loja precisa ter pelo menos um Dono ativo.',
+  cannot_delete_self: 'Você não pode excluir a sua própria conta.',
+  cannot_disable_self: 'Você não pode desativar a sua própria conta.',
+  owner_only: 'Somente o Dono pode fazer isso.',
   wrong_password: 'Senha incorreta.',
   too_many_requests: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
   unauthorized: 'Sessão expirada. Entre novamente.',
@@ -46,4 +57,4 @@ const MESSAGES = {
   weak_password: 'A senha configurada na Cloudflare precisa ter pelo menos 8 caracteres.',
 };
 export const friendlyError = (err) =>
-  MESSAGES[err?.message] || (err?.name === 'AbortError' ? 'Tempo esgotado. Verifique a conexão.' : 'Não foi possível concluir. Tente novamente.');
+  (err?.message === 'invalid_input' && err.data?.message) || MESSAGES[err?.message] || (err?.name === 'AbortError' ? 'Tempo esgotado. Verifique a conexão.' : 'Não foi possível concluir. Tente novamente.');

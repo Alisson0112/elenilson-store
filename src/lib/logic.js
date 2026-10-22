@@ -169,3 +169,23 @@ export function createOrderFromRequest({ items, customer, products, isValidPhone
     customer: c, items: lines, total, status: ORDER_STATUSES[0],
   };
 }
+
+/* ---------- Contas do painel (regras compartilhadas entre navegador e servidor) ---------- */
+export const ROLES = { owner: 'Dono', staff: 'Funcionário' };
+export const normalizeUsername = (u) => String(u ?? '').trim().toLowerCase();
+const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,31}$/;
+const WEAK = new Set(['12345678', '123456789', '1234567890', 'password', 'password1', 'senha123', 'senha1234', 'admin123', 'qwerty123', 'abc12345', 'elenilson', 'elenilson123']);
+
+/** Devolve a mensagem de erro (string) ou '' se estiver tudo certo. */
+export function usernameError(username) {
+  return USERNAME_RE.test(normalizeUsername(username)) ? '' : 'Usuário: 3 a 32 caracteres, só letras minúsculas, números, ponto, hífen ou _.';
+}
+export function passwordError(password, username = '') {
+  const p = String(password ?? '');
+  if (p.length < 8) return 'A senha precisa ter pelo menos 8 caracteres.';
+  if (p.length > 128) return 'A senha pode ter no máximo 128 caracteres.';
+  if (!/[a-zA-Z]/.test(p) || !/\d/.test(p)) return 'Use letras e números na senha.';
+  if (WEAK.has(p.toLowerCase()) || p.toLowerCase() === normalizeUsername(username)) return 'Essa senha é fácil demais de adivinhar. Escolha outra.';
+  return '';
+}
+export const nameError = (name) => (String(name ?? '').trim().length >= 2 && String(name).trim().length <= 60 ? '' : 'Informe um nome (2 a 60 caracteres).');

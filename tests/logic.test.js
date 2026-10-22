@@ -144,3 +144,40 @@ describe('v0.4', () => {
     expect(() => createOrderFromRequest({ ...base, items: [{ id: 2, qty: 1 }], customer: { name: 'a', phone: '1', address: '' } })).toThrow('Dados inválidos');
   });
 });
+
+import { usernameError, passwordError, nameError, normalizeUsername } from '../src/lib/logic.js';
+import { hashPassword, verifyPassword, timingSafeEqual } from '../functions/_lib/passwords.js';
+describe('contas', () => {
+  it('usuário: normaliza e valida', () => {
+    expect(normalizeUsername('  Elenilson ')).toBe('elenilson');
+    expect(usernameError('elenilson')).toBe('');
+    expect(usernameError('ana.maria_2')).toBe('');
+    expect(usernameError('ab')).not.toBe('');
+    expect(usernameError('com espaço')).not.toBe('');
+    expect(usernameError('<script>')).not.toBe('');
+  });
+  it('senha: tamanho, letras+números, senhas fracas e igual ao usuário', () => {
+    expect(passwordError('Loja2026forte')).toBe('');
+    expect(passwordError('curta1')).toMatch(/8 caracteres/);
+    expect(passwordError('somenteletras')).toMatch(/letras e números/);
+    expect(passwordError('12345678')).not.toBe('');
+    expect(passwordError('senha123')).toMatch(/fácil/);
+    expect(passwordError('maria2026', 'maria2026')).toMatch(/fácil/);
+    expect(passwordError('a1'.repeat(70))).toMatch(/128/);
+  });
+  it('nome', () => { expect(nameError('Ana')).toBe(''); expect(nameError(' ')).not.toBe(''); });
+  it('hash PBKDF2: confere a senha certa, recusa a errada, sal diferente a cada hash', async () => {
+    const h1 = await hashPassword('Loja2026forte'), h2 = await hashPassword('Loja2026forte');
+    expect(h1).toMatch(/^pbkdf2-sha256\$100000\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$/);
+    expect(h1).not.toBe(h2);
+    expect(await verifyPassword('Loja2026forte', h1)).toBe(true);
+    expect(await verifyPassword('loja2026forte', h1)).toBe(false);
+    expect(await verifyPassword('qualquer', undefined)).toBe(false);
+    expect(await verifyPassword('qualquer', 'md5$abc')).toBe(false);
+  });
+  it('comparação em tempo constante', () => {
+    expect(timingSafeEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2]))).toBe(true);
+    expect(timingSafeEqual(new Uint8Array([1, 2]), new Uint8Array([1, 3]))).toBe(false);
+    expect(timingSafeEqual(new Uint8Array([1]), new Uint8Array([1, 2]))).toBe(false);
+  });
+});

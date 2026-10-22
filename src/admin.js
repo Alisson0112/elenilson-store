@@ -1,12 +1,13 @@
 /* Painel administrativo (carregado sob demanda em seusite/#admin). */
 import { backend, settings, api, fetchCatalog, applySettings, friendlyError } from './lib/backend.js';
-import { sanitizeProduct, sanitizeProducts, ORDER_STATUSES, thumbOf, getCategories } from './lib/logic.js';
+import { sanitizeProduct, sanitizeProducts, ORDER_STATUSES, thumbOf, getCategories, ROLES, usernameError, passwordError, nameError, normalizeUsername } from './lib/logic.js';
 import { escapeHtml as e, money, onlyDigits, formatPhoneBR } from './lib/utils.js';
 import { processImage, saveLocalImage, resolveSrc } from './lib/images.js';
 
 const MAX_PHOTOS = 8;
 let ctx = null, root = null;
-const A = { tab: 'products', q: '', cat: '', draft: null, orders: null, orderFilter: '', loading: false };
+const A = { tab: 'products', q: '', cat: '', draft: null, orders: null, orderFilter: '', loading: false, auth: null, user: null, users: null };
+const isOwner = () => !isServer() || A.user?.role === 'owner';
 
 const $ = (s, r = root) => r.querySelector(s);
 const isServer = () => backend.mode === 'server';
@@ -32,7 +33,8 @@ export function openAdmin(context) {
     root.addEventListener('change', onChange);
     root.addEventListener('submit', onSubmit);
     root.addEventListener('input', onInput);
-    root.addEventListener('keydown', onKey);
+    // no documento (não só no painel): o Esc funciona mesmo quando o foco saiu da janela
+    document.addEventListener('keydown', (ev) => { if (root && !root.hidden) onKey(ev); });
     root.addEventListener('dragover', (ev) => { if (ev.target.closest('#adm-imgs')) ev.preventDefault(); });
     root.addEventListener('drop', (ev) => { if (ev.target.closest('#adm-imgs')) { ev.preventDefault(); addFiles(ev.dataTransfer.files); } });
   }
@@ -50,11 +52,14 @@ async function load() {
   render('<p class="adm-loading">Carregando…</p>');
   if (!isServer()) { A.orders = ctx.storage.get(ctx.KEYS.orders, []); return renderPanel(); }
   try {
+    A.auth = await api('GET', '/api/auth');
+    A.user = A.auth.user; backend.admin = Boolean(A.user);
+    if (!A.user) return A.auth.setupRequired ? renderSetup() : renderLogin();
+    if (!isOwner() && ['store', 'backup', 'users'].includes(A.tab)) A.tab = 'products';
     const d = await fetchCatalog(true);
-    backend.admin = d.admin; backend.adminConfigured = d.adminConfigured;
-    if (!d.admin) return renderLogin();
     let list = d.products;
     if (!d.seeded) { // 1º acesso: o dono assume o catálogo atual (vira editável e passa a valer para todos)
+      if (!isOwner()) { render(`<div class="adm-login"><div class="adm-card"><div class="adm-logo">⏳</div><h1>Quase lá</h1><p class="adm-muted">O <b>Dono</b> da loja precisa entrar no painel uma vez para ativar o catálogo. Depois disso você já pode editar.</p><button class="adm-btn" data-adm="logout">Sair</button></div></div>`); return; }
       list = (await api('POST', '/api/import', { products: ctx.initialProducts, settings })).products;
       backend.seeded = true;
       say('Painel ativado: o catálogo atual agora é editável.');
@@ -76,7 +81,7 @@ function say(msg, bad = false) {
   clearTimeout(sayTimer); sayTimer = setTimeout(() => t.classList.remove('show'), bad ? 4500 : 2200);
 }
 function fail(err) {
-  if (err?.message === 'unauthorized' && isServer()) { backend.admin = false; renderLogin('Sessão expirada. Entre novamente.'); return; }
+  if (err?.message === 'unauthorized' && isServer()) { signedOut('Sua sessão terminou. Entre novamente.'); return; }
   say(friendlyError(err), true);
 }
 const busy = async (btn, fn) => {
@@ -84,29 +89,64 @@ const busy = async (btn, fn) => {
   try { return await fn(); } catch (err) { fail(err); } finally { if (btn) btn.disabled = false; }
 };
 
-/* ---------- login ---------- */
+/* ---------- acesso: entrar, primeira conta, recuperar senha ---------- */
+const pwField = (name, label, autocomplete, extra = '') => `<label>${label}<span class="adm-pw"><input type="password" name="${name}" autocomplete="${autocomplete}" required maxlength="128" ${extra}><button type="button" class="adm-eye" data-adm="toggle-pw" aria-label="Mostrar senha">👁</button></span></label>`;
+const pwHint = '<small class="adm-hint" data-pw-hint>Mínimo 8 caracteres, com letras e números.</small>';
+const backLink = '<a class="adm-link" href="#" data-adm="exit">← Voltar para a loja</a>';
+const shell = (inner) => `<div class="adm-login">${inner}</div>`;
+
 function renderLogin(msg = '') {
-  render(`<div class="adm-login"><form id="adm-login" class="adm-card" autocomplete="on">
-    <div class="adm-logo">⚙</div><h1>Painel da loja</h1>
-    ${backend.adminConfigured ? `<p class="adm-muted">Digite a senha de administrador.</p>
-      <label>Senha<input type="password" name="password" autocomplete="current-password" required autofocus></label>
-      <p class="adm-error" id="adm-login-error">${e(msg)}</p>
-      <button class="adm-btn primary" type="submit">Entrar</button>`
-    : `<p class="adm-error">A senha do painel ainda não foi configurada na Cloudflare.</p>
-      <p class="adm-muted">No projeto da Cloudflare Pages: <b>Settings → Variables and Secrets</b> → adicione o segredo <code>ADMIN_PASSWORD</code> (mínimo 8 caracteres) e republique. O passo a passo completo está no README.</p>`}
-    <a class="adm-link" href="#" data-adm="exit">← Voltar para a loja</a></form></div>`);
+  render(shell(`<form id="adm-login" class="adm-card adm-auth" autocomplete="on" novalidate>
+    <div class="adm-logo">⚙</div><h1>Painel da loja</h1><p class="adm-muted">Entre com seu usuário e senha.</p>
+    <label>Usuário<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="40" autofocus></label>
+    ${pwField('password', 'Senha', 'current-password')}
+    <label class="adm-check adm-remember"><input type="checkbox" name="remember"> Manter conectado neste aparelho (30 dias)</label>
+    <p class="adm-error" id="adm-auth-error" role="alert">${e(msg)}</p>
+    <button class="adm-btn primary" type="submit">Entrar</button>
+    <a class="adm-link" href="#" data-adm="show-recover">Esqueci minha senha</a>${backLink}</form>`));
+}
+
+const setupKeyHelp = '<p class="adm-muted small">A <b>chave de configuração</b> é o valor do segredo <code>ADMIN_PASSWORD</code> que você cadastrou na Cloudflare (<i>Settings → Variables and Secrets</i>). Ela só serve para criar a primeira conta e recuperar o acesso — guarde-a em local seguro.</p>';
+const setupMissing = '<p class="adm-error">A chave de configuração ainda não existe na Cloudflare.</p><p class="adm-muted">No projeto da Cloudflare Pages: <b>Settings → Variables and Secrets</b> → adicione o segredo <code>ADMIN_PASSWORD</code> (mínimo 8 caracteres) e republique. Passo a passo no README.</p>';
+
+function renderSetup() {
+  render(shell(`<form id="adm-setup" class="adm-card adm-auth" novalidate>
+    <div class="adm-logo">🔐</div><h1>Criar conta do dono</h1>
+    ${A.auth?.setupAvailable ? `<p class="adm-muted">Primeiro acesso: crie a sua conta de <b>Dono</b>. Depois você poderá cadastrar funcionários.</p>
+    ${pwField('setupKey', 'Chave de configuração', 'off')}${setupKeyHelp}
+    <label>Seu nome<input name="name" autocomplete="name" required maxlength="60"></label>
+    <label>Usuário (para entrar)<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32" placeholder="ex.: elenilson"></label>
+    ${pwField('password', 'Senha', 'new-password', 'data-pw')}${pwHint}
+    ${pwField('confirm', 'Repita a senha', 'new-password')}
+    <p class="adm-error" id="adm-auth-error" role="alert"></p>
+    <button class="adm-btn primary" type="submit">Criar conta e entrar</button>` : setupMissing}${backLink}</form>`));
+}
+
+function renderRecover() {
+  render(shell(`<form id="adm-recover" class="adm-card adm-auth" novalidate>
+    <div class="adm-logo">🔑</div><h1>Recuperar acesso</h1>
+    ${A.auth?.setupAvailable ? `<p class="adm-muted">Defina uma nova senha usando a chave de configuração da Cloudflare. Funcionários podem pedir ao Dono para redefinir a senha pelo painel.</p>
+    ${pwField('setupKey', 'Chave de configuração', 'off')}${setupKeyHelp}
+    <label>Usuário<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="40"></label>
+    ${pwField('password', 'Nova senha', 'new-password', 'data-pw')}${pwHint}
+    ${pwField('confirm', 'Repita a nova senha', 'new-password')}
+    <p class="adm-error" id="adm-auth-error" role="alert"></p>
+    <button class="adm-btn primary" type="submit">Salvar nova senha e entrar</button>` : setupMissing}
+    <a class="adm-link" href="#" data-adm="show-login">← Voltar para o login</a></form>`));
 }
 
 /* ---------- painel ---------- */
 function renderPanel() {
   const openOrders = (A.orders || []).filter((o) => o.status === ORDER_STATUSES[0]).length;
   const tab = (id, label) => `<button class="${A.tab === id ? 'active' : ''}" data-adm="tab" data-tab="${id}">${label}</button>`;
+  const owner = isOwner();
   render(`<header class="adm-top"><strong class="adm-title">⚙ Painel · ${e(settings.storeName)}</strong>
-    <nav class="adm-tabs" aria-label="Seções">${tab('products', `Produtos (${products().length})`)}${tab('orders', `Pedidos${openOrders ? ` <i class="adm-badge">${openOrders}</i>` : ''}`)}${tab('store', 'Loja')}${tab('backup', 'Backup')}</nav>
-    <div class="adm-top-actions"><a class="adm-btn" href="#" data-adm="exit">Ver loja</a>${isServer() ? '<button class="adm-btn" data-adm="logout">Sair</button>' : ''}</div></header>
+    <nav class="adm-tabs" aria-label="Seções">${tab('products', `Produtos (${products().length})`)}${tab('orders', `Pedidos${openOrders ? ` <i class="adm-badge">${openOrders}</i>` : ''}`)}${owner ? tab('store', 'Loja') : ''}${owner && isServer() ? tab('users', 'Usuários') : ''}${owner ? tab('backup', 'Backup') : ''}${isServer() ? tab('account', 'Minha conta') : ''}</nav>
+    <div class="adm-top-actions">${A.user ? `<span class="adm-who" title="${e(A.user.username)}">${e(A.user.name.split(' ')[0])} <i class="adm-role ${e(A.user.role)}">${e(ROLES[A.user.role])}</i></span>` : ''}<a class="adm-btn" href="#" data-adm="exit">Ver loja</a>${isServer() ? '<button class="adm-btn" data-adm="logout">Sair</button>' : ''}</div></header>
     <main class="adm-main">${modeBanner()}<section id="adm-content">${tabContent()}</section></main>
     <div id="adm-modal" class="adm-modal-wrap" hidden></div>`);
   if (A.tab === 'orders' && isServer() && A.orders === null) loadOrders();
+  if (A.tab === 'users' && A.users === null) loadUsers();
 }
 
 const modeBanner = () => (isServer()
@@ -114,7 +154,7 @@ const modeBanner = () => (isServer()
   : '<div class="adm-banner warn"><b>Modo local:</b> as alterações ficam salvas só neste navegador — os clientes <b>não</b> veem. Para publicar de verdade, ative o banco de dados na Cloudflare (passo a passo no README).</div>');
 
 function tabContent() {
-  return { products: productsTab, orders: ordersTab, store: storeTab, backup: backupTab }[A.tab]();
+  return ({ products: productsTab, orders: ordersTab, store: storeTab, backup: backupTab, users: usersTab, account: accountTab }[A.tab] ?? productsTab)();
 }
 function refreshContent() { const c = $('#adm-content'); if (c) c.innerHTML = tabContent(); }
 
@@ -173,7 +213,7 @@ function openEditor(p) {
   renderImages();
   $('input[name=name]', modal).focus();
 }
-function closeEditor() { const m = $('#adm-modal'); if (m) { m.hidden = true; m.innerHTML = ''; } A.draft = null; }
+function closeEditor() { const m = $('#adm-modal'); if (m) { m.hidden = true; m.innerHTML = ''; } A.draft = null; A.userEdit = null; }
 
 function renderImages() {
   const box = $('#adm-imgs'); if (!box || !A.draft) return;
@@ -283,9 +323,60 @@ function storeTab() {
       <label>Chave Pix<input name="pixKey" maxlength="140" value="${e(settings.pixKey)}" placeholder="CPF, e-mail, telefone ou aleatória"></label></div>
     <p class="adm-muted">Com o WhatsApp preenchido, o pedido do cliente abre direto na sua conversa com o resumo pronto.</p>
     <p class="adm-error" id="adm-settings-error"></p><button class="adm-btn primary" type="submit">Salvar dados da loja</button></form>
-    <div class="adm-card"><h2>Acesso</h2>${isServer()
-      ? '<p class="adm-muted">A senha do painel é definida na Cloudflare (variável secreta <code>ADMIN_PASSWORD</code>). Para trocar, altere lá e republique.</p><button class="adm-btn" data-adm="logout">Sair do painel</button>'
-      : '<p class="adm-muted">Modo local: sem senha, pois nada aqui é publicado. Ao ativar o banco na Cloudflare, o painel passa a exigir senha.</p>'}</div>`;
+    ${isServer() ? '' : '<div class="adm-card"><h2>Acesso</h2><p class="adm-muted">Modo local: sem login, pois nada aqui é publicado. Ao ativar o banco na Cloudflare, o painel passa a exigir usuário e senha.</p></div>'}`;
+}
+
+/* ----- Usuários (só Dono) ----- */
+async function loadUsers() {
+  try { A.users = (await api('GET', '/api/users')).users; } catch (err) { A.users = []; fail(err); }
+  if (A.tab === 'users') refreshContent();
+}
+const when = (t) => (t ? new Date(t * 1000).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'nunca');
+function usersTab() {
+  if (A.users === null) return '<p class="adm-loading">Carregando usuários…</p>';
+  return `<div class="adm-toolbar"><button class="adm-btn primary" data-adm="user-new">＋ Novo usuário</button></div>
+    <p class="adm-muted"><b>Dono</b>: acesso total, inclusive dados da loja, backup e usuários. <b>Funcionário</b>: produtos, fotos, preços e pedidos.</p>
+    <div class="adm-users">${A.users.map((u) => `<div class="adm-user ${u.active ? '' : 'is-hidden'}" data-uid="${u.id}">
+      <div class="adm-avatar" aria-hidden="true">${e(u.name.trim()[0]?.toUpperCase() || '?')}</div>
+      <div class="adm-info"><b>${e(u.name)}${u.id === A.user.id ? ' <small>(você)</small>' : ''}</b><small>@${e(u.username)} · último acesso: ${when(u.last_login)}${u.active ? '' : ' · <b>desativado</b>'}</small></div>
+      <i class="adm-role ${e(u.role)}">${e(ROLES[u.role])}</i>
+      <div class="adm-row-actions"><button class="adm-btn" data-adm="user-edit">Editar</button>${u.id === A.user.id ? '' : '<button class="adm-btn danger" data-adm="user-del">Excluir</button>'}</div></div>`).join('')}</div>`;
+}
+function openUserDialog(u) {
+  A.userEdit = u ?? { id: null };
+  const isNew = !u, self = u?.id === A.user.id;
+  const modal = $('#adm-modal'); modal.hidden = false;
+  modal.innerHTML = `<div class="adm-dialog adm-dialog-sm" role="dialog" aria-modal="true" aria-labelledby="adm-u-title">
+    <header><h2 id="adm-u-title">${isNew ? 'Novo usuário' : `Editar ${e(u.name)}`}</h2><button class="adm-icon" data-adm="close-editor" aria-label="Fechar">×</button></header>
+    <form id="adm-user-form" class="adm-form" novalidate>
+      <label>Nome<input name="name" required maxlength="60" value="${e(u?.name ?? '')}"></label>
+      ${isNew ? '<label>Usuário (para entrar)<input name="username" required maxlength="32" autocapitalize="none" spellcheck="false" autocomplete="off" placeholder="ex.: maria"></label>' : `<p class="adm-muted">Usuário: <b>@${e(u.username)}</b></p>`}
+      <label>Perfil<select name="role" ${self ? 'disabled' : ''}>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${(u?.role ?? 'staff') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      ${isNew ? '' : `<label class="adm-check"><input type="checkbox" name="active" ${u.active ? 'checked' : ''} ${self ? 'disabled' : ''}> Conta ativa (pode entrar no painel)</label>`}
+      ${pwField('password', isNew ? 'Senha inicial' : 'Nova senha (deixe vazio para manter)', 'new-password', `data-pw ${isNew ? '' : 'data-optional'}`).replace(' required', isNew ? ' required' : '')}${pwHint}
+      <p class="adm-muted small">${isNew ? 'Passe a senha para a pessoa; ela pode trocar depois em “Minha conta”.' : 'Ao redefinir a senha ou desativar, a pessoa é desconectada de todos os aparelhos.'}</p>
+      <p class="adm-error" id="adm-user-error" role="alert"></p>
+      <footer class="adm-dialog-actions"><span class="grow"></span><button type="button" class="adm-btn" data-adm="close-editor">Cancelar</button><button type="submit" class="adm-btn primary">${isNew ? 'Criar usuário' : 'Salvar'}</button></footer>
+    </form></div>`;
+  $('input[name=name]', modal).focus();
+}
+
+/* ----- Minha conta ----- */
+function accountTab() {
+  const u = A.user;
+  return `<form id="adm-account-name" class="adm-card adm-form" novalidate><h2>Minha conta</h2>
+      <p class="adm-muted">Usuário: <b>@${e(u.username)}</b> · Perfil: <b>${e(ROLES[u.role])}</b></p>
+      <label>Nome<input name="name" required maxlength="60" value="${e(u.name)}"></label>
+      <button class="adm-btn primary" type="submit">Salvar nome</button></form>
+    <form id="adm-account-pw" class="adm-card adm-form" novalidate><h2>Trocar senha</h2>
+      ${pwField('currentPassword', 'Senha atual', 'current-password')}
+      ${pwField('newPassword', 'Nova senha', 'new-password', 'data-pw')}${pwHint}
+      ${pwField('confirm', 'Repita a nova senha', 'new-password')}
+      <p class="adm-error" id="adm-pw-error" role="alert"></p>
+      <button class="adm-btn primary" type="submit">Trocar senha</button>
+      <p class="adm-muted small">Ao trocar a senha, os outros aparelhos conectados com a sua conta são desconectados.</p></form>
+    <div class="adm-card"><h2>Segurança</h2><p class="adm-muted">Esqueceu o celular conectado em algum lugar? Encerre todas as sessões da sua conta.</p>
+      <button class="adm-btn danger" data-adm="logout-all">Sair de todos os aparelhos</button></div>`;
 }
 
 /* ----- Backup ----- */
@@ -314,6 +405,10 @@ async function replaceCatalog(list, newSettings) {
 }
 
 /* ---------- eventos ---------- */
+function signedOut(msg = '') {
+  backend.admin = false; A.user = null; A.users = null; A.orders = null; A.tab = 'products';
+  renderLogin(msg);
+}
 const rowOf = (el) => products().find((p) => p.id === Number(el.closest('.adm-row')?.dataset.id));
 
 const act = {
@@ -323,7 +418,21 @@ const act = {
     renderPanel();
   },
   exit: (_el, ev) => { ev.preventDefault(); history.replaceState(null, '', location.pathname + location.search); closeAdmin(); window.dispatchEvent(new HashChangeEvent('hashchange')); },
-  logout: (el) => busy(el, async () => { await api('DELETE', '/api/login'); backend.admin = false; renderLogin(); }),
+  logout: (el) => busy(el, async () => { await api('DELETE', '/api/login'); signedOut(); }),
+  'logout-all': (el) => {
+    if (!confirm('Sair de todos os aparelhos, inclusive deste?')) return;
+    busy(el, async () => { await api('DELETE', '/api/login?all=1'); signedOut('Você saiu de todos os aparelhos.'); });
+  },
+  'toggle-pw': (el) => { const i = el.previousElementSibling; const show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.setAttribute('aria-label', show ? 'Ocultar senha' : 'Mostrar senha'); el.classList.toggle('on', show); },
+  'show-recover': (_el, ev) => { ev.preventDefault(); renderRecover(); },
+  'show-login': (_el, ev) => { ev.preventDefault(); renderLogin(); },
+  'user-new': () => openUserDialog(null),
+  'user-edit': (el) => openUserDialog(A.users.find((u) => u.id === Number(el.closest('.adm-user').dataset.uid))),
+  'user-del': (el) => {
+    const u = A.users.find((x) => x.id === Number(el.closest('.adm-user').dataset.uid));
+    if (!u || !confirm(`Excluir a conta de ${u.name} (@${u.username})? A pessoa perde o acesso imediatamente.`)) return;
+    busy(el, async () => { await api('DELETE', `/api/users/${u.id}`); A.users = A.users.filter((x) => x.id !== u.id); refreshContent(); say('Usuário excluído.'); });
+  },
   new: () => openEditor(null),
   edit: (el) => { const p = rowOf(el); if (p) openEditor(p); },
   'close-editor': closeEditor,
@@ -376,9 +485,9 @@ function onClick(ev) {
   if (el) act[el.dataset.adm]?.(el, ev);
 }
 function onKey(ev) {
-  if (ev.key === 'Escape' && A.draft) closeEditor();
+  if (ev.key === 'Escape' && $('#adm-modal') && !$('#adm-modal').hidden) closeEditor();
   if (ev.key === 'Enter' && ev.target.matches('[data-quick="price"]')) ev.target.blur();
-  if (ev.key === 'Tab' && A.draft) { // mantém o foco dentro do editor
+  if (ev.key === 'Tab' && $('#adm-modal') && !$('#adm-modal').hidden) { // mantém o foco dentro da janela
     const f = [...$('#adm-modal').querySelectorAll('button:not([disabled]),input:not([type=hidden]),select,textarea,a[href]')].filter((x) => x.offsetParent !== null);
     if (!f.length) return;
     if (ev.shiftKey && document.activeElement === f[0]) { ev.preventDefault(); f.at(-1).focus(); }
@@ -389,6 +498,13 @@ function onInput(ev) {
   const t = ev.target;
   if (t.id === 'adm-q') { A.q = t.value; const l = $('.adm-list'); if (l) { const pos = t.selectionStart; refreshContent(); const q = $('#adm-q'); q.focus(); q.setSelectionRange(pos, pos); } }
   if (t.name === 'whatsappNumber') t.value = formatPhoneBR(t.value);
+  if (t.matches('[data-pw]')) {
+    const hint = t.closest('form').querySelector('[data-pw-hint]');
+    const user = t.form.elements.username?.value || A.userEdit?.username || A.user?.username || '';
+    const err = t.value ? passwordError(t.value, user) : '';
+    hint.textContent = !t.value ? 'Mínimo 8 caracteres, com letras e números.' : err || 'Senha forte ✓';
+    hint.classList.toggle('ok', Boolean(t.value) && !err); hint.classList.toggle('bad', Boolean(err));
+  }
 }
 async function onChange(ev) {
   const t = ev.target;
@@ -434,12 +550,59 @@ async function importBackup(file) {
 async function onSubmit(ev) {
   ev.preventDefault();
   const form = ev.target, btn = form.querySelector('[type=submit]');
+  const f = Object.fromEntries(new FormData(form));
+  const showErr = (id, msg) => { const el = $(id); if (el) el.textContent = msg; if (msg) el?.scrollIntoView({ block: 'nearest' }); return Boolean(msg); };
+  const signedIn = async () => { A.auth = null; await load(); };
+
   if (form.id === 'adm-login') {
-    const err = $('#adm-login-error');
+    if (showErr('#adm-auth-error', !f.username?.trim() || !f.password ? 'Informe usuário e senha.' : '')) return;
     return busy(btn, async () => {
-      try { await api('POST', '/api/login', { password: new FormData(form).get('password') }); }
-      catch (e2) { err.textContent = friendlyError(e2); return; }
-      backend.admin = true; await load();
+      try { await api('POST', '/api/login', { username: f.username, password: f.password, remember: f.remember === 'on' }); }
+      catch (e2) { showErr('#adm-auth-error', friendlyError(e2)); form.elements.password.value = ''; form.elements.password.focus(); return; }
+      await signedIn();
+    });
+  }
+  if (form.id === 'adm-setup' || form.id === 'adm-recover') {
+    const err = (form.id === 'adm-setup' ? nameError(f.name) : '') || (!f.setupKey ? 'Informe a chave de configuração.' : '')
+      || usernameError(f.username) || passwordError(f.password, normalizeUsername(f.username)) || (f.password !== f.confirm ? 'As senhas não conferem.' : '');
+    if (showErr('#adm-auth-error', err)) return;
+    return busy(btn, async () => {
+      try { await api('POST', form.id === 'adm-setup' ? '/api/setup' : '/api/recover', { setupKey: f.setupKey, name: f.name, username: f.username, password: f.password }); }
+      catch (e2) { showErr('#adm-auth-error', friendlyError(e2)); return; }
+      say(form.id === 'adm-setup' ? 'Conta criada! Bem-vindo ao painel.' : 'Senha redefinida ✓');
+      await signedIn();
+    });
+  }
+  if (form.id === 'adm-user-form') {
+    const isNew = !A.userEdit?.id;
+    const err = nameError(f.name) || (isNew ? usernameError(f.username) : '') || ((isNew || f.password) ? passwordError(f.password, f.username || A.userEdit.username) : '');
+    if (showErr('#adm-user-error', err)) return;
+    return busy(btn, async () => {
+      try {
+        if (isNew) await api('POST', '/api/users', { name: f.name, username: f.username, password: f.password, role: f.role });
+        else {
+          const body = { name: f.name };
+          if (A.userEdit.id !== A.user.id) { body.role = f.role; body.active = f.active === 'on'; }
+          if (f.password) body.password = f.password;
+          await api('PATCH', `/api/users/${A.userEdit.id}`, body);
+          if (A.userEdit.id === A.user.id) A.user = { ...A.user, name: f.name.trim() };
+        }
+      } catch (e2) { showErr('#adm-user-error', friendlyError(e2)); return; }
+      closeEditor(); A.users = null; renderPanel(); say(isNew ? 'Usuário criado ✓' : 'Usuário atualizado ✓');
+    });
+  }
+  if (form.id === 'adm-account-name') {
+    if (nameError(f.name)) return say(nameError(f.name), true);
+    return busy(btn, async () => { A.user = (await api('PUT', '/api/account', { name: f.name })).user; renderPanel(); say('Nome atualizado ✓'); });
+  }
+  if (form.id === 'adm-account-pw') {
+    const err = (!f.currentPassword ? 'Informe a senha atual.' : '') || passwordError(f.newPassword, A.user.username) || (f.newPassword !== f.confirm ? 'As senhas não conferem.' : '')
+      || (f.newPassword === f.currentPassword ? 'A nova senha precisa ser diferente da atual.' : '');
+    if (showErr('#adm-pw-error', err)) return;
+    return busy(btn, async () => {
+      try { await api('PUT', '/api/account', { currentPassword: f.currentPassword, newPassword: f.newPassword }); }
+      catch (e2) { showErr('#adm-pw-error', friendlyError(e2)); return; }
+      form.reset(); showErr('#adm-pw-error', ''); say('Senha alterada ✓ Outros aparelhos foram desconectados.');
     });
   }
   if (form.id === 'adm-form') {
@@ -449,7 +612,6 @@ async function onSubmit(ev) {
     return busy(btn, async () => { await persistProduct(product); closeEditor(); refreshContent(); say('Produto salvo ✓'); });
   }
   if (form.id === 'adm-settings') {
-    const f = Object.fromEntries(new FormData(form));
     const digits = onlyDigits(f.whatsappNumber);
     if (digits && digits.length < 10) { $('#adm-settings-error').textContent = 'WhatsApp inválido. Informe DDD + número.'; return; }
     f.whatsappNumber = digits ? (digits.length <= 11 ? '55' + digits : digits) : '';

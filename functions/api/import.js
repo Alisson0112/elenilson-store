@@ -1,11 +1,11 @@
 import { handle, json, readJson, HttpError } from '../_lib/http.js';
 import { getDb, saveProduct, saveSettings, markSeeded, gcImages, listProducts, getSettings } from '../_lib/db.js';
-import { requireAdmin } from '../_lib/auth.js';
+import { requireOwner } from '../_lib/auth.js';
 import { sanitizeProducts, sanitizeSettings } from '../../src/lib/logic.js';
 
 // Substitui todo o catálogo (usado para ativar o painel com o catálogo inicial, restaurar e importar backup).
 export const onRequestPost = handle(async ({ request, env }) => {
-  await requireAdmin(request, env);
+  await requireOwner(request, env);
   const db = await getDb(env);
   const body = await readJson(request, 3_000_000);
   const products = sanitizeProducts(body.products);

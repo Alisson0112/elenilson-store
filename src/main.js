@@ -427,7 +427,7 @@ async function initBackend() {
   try {
     const data = await fetchCatalog();
     backend.mode = 'server';
-    Object.assign(backend, { admin: data.admin, adminConfigured: data.adminConfigured, seeded: data.seeded });
+    Object.assign(backend, { admin: data.admin, seeded: data.seeded });
     applySettings(data.settings);
     // Enquanto o dono não "assumiu" o catálogo no painel, a loja segue com o catálogo inicial do código.
     state.products = data.seeded ? (sanitizeProducts(data.products) ?? []) : structuredClone(initialProducts);
