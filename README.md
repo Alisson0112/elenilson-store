@@ -1,6 +1,6 @@
 # Elenilson Store — v0.3
 
-Loja virtual de demonstração em Vite + JavaScript puro (sem framework), pronta para hospedagem estática gratuita (GitHub Pages).
+Loja virtual de demonstração em Vite + JavaScript puro (sem framework), pronta para hospedagem estática gratuita (Cloudflare Pages ou GitHub Pages).
 
 ## Rodar localmente
 ```bash
@@ -24,17 +24,11 @@ O catálogo real fica em `src/lib/data.js` (49 produtos, 7 categorias). As fotos
 ## Painel "Minha loja" (demonstração)
 Fica oculto para clientes. Acesse `seusite/#admin` para ver o botão. Cadastra/remove produtos e exporta pedidos, mas **só no navegador atual** (localStorage) e **sem login** — não é seguro nem compartilhado entre dispositivos.
 
-## Publicar no GitHub Pages
-1. Suba o projeto num repositório (branch `main`).
-2. Em *Settings → Pages*, escolha **Source: GitHub Actions**.
-3. O workflow `.github/workflows/deploy.yml` roda os testes, gera o build e publica a cada push.
+## Publicar na Cloudflare Pages (ou GitHub Pages)
+O projeto está ligado ao GitHub: a cada commit na `main`, a Cloudflare Pages roda o build e republica sozinha.
+- Framework preset: **Vite** · Build command: `npm run build` · Output directory: `dist`
+- Ao enviar uma nova versão pelo site do GitHub (*Add file → Upload files*), envie **todas as pastas** (`src`, `public`, `tests`) junto com os arquivos da raiz. Enviar só alguns arquivos deixa a loja misturando versões.
+- Depois do commit, acompanhe em *Cloudflare → Workers & Pages → elenilson-store → Deployments*. Se o build falhar, o site continua na versão anterior.
+- Dica: no navegador, use Ctrl+F5 para ignorar o cache.
 
 Para aparecer no Google, cadastre o site no Google Search Console e solicite a indexação.
-
-## O que mudou na v0.2
-**Bugs corrigidos:** categorias/busca/ordenação não funcionavam (handlers inline fora do escopo do módulo); carrinho fechava ao alterar quantidade; tela de sucesso do pedido sumia; XSS por nome/descrição/cor de produto; app quebrava com localStorage corrompido; categoria "Outros" inacessível; build sem `base` (quebrava em subcaminho); dependência `lucide` não usada; emoji duplicado.
-
-**Melhorias:** código modular e testado; busca instantânea sem perder o foco e sem depender de acento; favoritos persistentes; detalhe do produto; selo de desconto e ordenação por maior desconto; validação e máscara de telefone no checkout; pedido via WhatsApp; limite de quantidade; sincronização entre abas; modais acessíveis (Esc, foco preso, ARIA); link "pular para o conteúdo"; respeita `prefers-reduced-motion`; favicon, manifest, Open Graph e robots.txt; deploy automático.
-
-## Antes de vender de verdade
-Pedidos e catálogo ainda ficam só no navegador. Para uso real: banco de dados (ex.: Supabase com RLS), login no painel, chave Pix e WhatsApp configurados. Nunca coloque chaves secretas no frontend.
