@@ -1,34 +1,59 @@
-# Elenilson Store — v0.3
+# Elenilson Store — v0.4
 
-Loja virtual de demonstração em Vite + JavaScript puro (sem framework), pronta para hospedagem estática gratuita (Cloudflare Pages ou GitHub Pages).
+Loja virtual em Vite + JavaScript puro, hospedada grátis na **Cloudflare Pages**, com **painel administrativo completo** e banco de dados **Cloudflare D1**.
 
-## Rodar localmente
-```bash
-npm install
-npm run dev      # desenvolvimento
-npm test         # testes unitários (Vitest)
-npm run build    # gera dist/
+## Painel da loja (`seusite/#admin`)
+Tudo é editável, sem mexer em código:
+- **Produtos:** nome, categoria (pode criar nova), preço, preço antigo (mostra % de desconto), etiqueta (OFERTA, NOVO…), descrição, ícone, cor, **visível/oculto**, **esgotado**, ordem na vitrine, duplicar e excluir.
+- **Preço direto na lista:** digite e aperte Enter. Vazio = “Consulte o preço”.
+- **Fotos:** envie do computador ou tire na hora pelo celular (até 8 por produto), escolha a principal e reordene. As fotos são reduzidas automaticamente no navegador (uma foto de 3 MB vira ~120 KB).
+- **Pedidos:** todos os pedidos dos clientes, com status (Aguardando, Pago, Enviado, Entregue, Cancelado), botão para o WhatsApp do cliente e exportação para planilha (CSV).
+- **Loja:** nome, aviso do topo, texto de boas-vindas, WhatsApp e chave Pix.
+- **Backup:** baixar/importar backup e restaurar o catálogo inicial.
+
+## ⚠️ Ativar o banco de dados (obrigatório para as edições valerem para todos)
+Sem esta etapa, a loja funciona normalmente, mas o painel abre em **modo local**: as alterações ficam só no navegador de quem editou. Faça uma vez (≈5 min), no painel da Cloudflare:
+
+1. **Criar o banco:** *Workers & Pages* → **D1 SQL Database** → *Create* → nome `elenilson-store` → *Create*.
+2. **Ligar o banco ao site:** *Workers & Pages* → projeto **elenilson-store** → *Settings* → **Bindings** → *Add* → **D1 database** → *Variable name*: `DB` (exatamente assim, maiúsculo) → escolha o banco `elenilson-store` → *Save*.
+3. **Criar a senha do painel:** no mesmo projeto → *Settings* → **Variables and Secrets** → *Add* → *Type*: **Secret** → *Variable name*: `ADMIN_PASSWORD` → *Value*: sua senha (mínimo 8 caracteres; use uma forte) → *Save*.
+4. **Republicar:** *Deployments* → no último deploy, menu **⋯** → **Retry deployment** (as configurações só valem a partir de um novo deploy).
+5. Abra `https://elenilson-store.pages.dev/#admin`, entre com a senha. No primeiro acesso o catálogo atual é copiado para o banco automaticamente e tudo fica editável.
+
+As tabelas são criadas sozinhas — não precisa rodar SQL. O plano gratuito do D1 (5 GB, milhões de leituras/dia) é mais que suficiente.
+
+## Segurança
+- Senha só no servidor (segredo da Cloudflare); sessão por **cookie HttpOnly + Secure + SameSite=Strict**, assinado com HMAC e válido por 12 h.
+- Bloqueio após 8 senhas erradas em 15 min; limite de 15 pedidos/hora por IP.
+- Proteção anti-CSRF (cabeçalho próprio + checagem de origem) em todas as alterações.
+- **Preços e totais do pedido são recalculados no servidor** — o cliente não consegue alterar o valor pelo navegador.
+- Fotos validadas pelo conteúdo real (JPG/PNG/WebP; SVG e arquivos disfarçados são recusados); todo texto é escapado contra XSS.
+
+## Estrutura
+```
+functions/            API (Cloudflare Pages Functions)
+  api/catalog.js      GET catálogo público (admin: ?all=1 inclui ocultos)
+  api/login.js        POST entrar · DELETE sair
+  api/products/…      POST criar · PUT editar · DELETE excluir · PUT order (reordenar)
+  api/img/…           POST enviar foto · GET foto (cache longo)
+  api/orders/…        POST pedido (público) · GET listar · PATCH status · DELETE
+  api/settings.js     PUT dados da loja
+  api/import.js       POST substituir catálogo (ativação, backup, restaurar)
+src/main.js           vitrine
+src/admin.js          painel (carregado só ao abrir #admin)
+src/lib/              lógica compartilhada pela vitrine e pela API (validações, pedido, etc.)
+tests/                testes (Vitest)
 ```
 
-## Configurar a loja
-Edite `src/config.js`:
-- `whatsappNumber`: número da loja com país e DDD, só dígitos (ex.: `5583999999999`). Com ele, o pedido abre direto no WhatsApp com o resumo pronto. Vazio = o cliente copia o resumo.
-- `pixKey`: chave Pix exibida no pedido (opcional).
+## Desenvolvimento
+```bash
+npm install
+npm run dev          # só a vitrine (painel em modo local)
+npm test             # testes unitários
+npm run build        # gera dist/
+# loja + API + banco local (opcional):
+npx wrangler pages dev dist --d1 DB=local-db --binding ADMIN_PASSWORD=umaSenhaForte
+```
 
-## Catálogo e fotos
-O catálogo real fica em `src/lib/data.js` (49 produtos, 7 categorias). As fotos ficam em `public/img/` (`fNN.webp` grande e `fNN-sm.webp` miniatura).
-- Para trocar um preço, edite o número em `P(id, categoria, nome, PREÇO, ...)`. **Preço `0` = "Consulte o preço"** (o item entra no pedido e a loja informa o valor no atendimento).
-- Preços já preenchidos vieram das etiquetas visíveis nas fotos (cadeado, carregadores, Melão de São Caetano, Mounjaro Natural, GineVida). Confira.
-- Se mudar o catálogo depois de já ter aberto a loja num navegador, o catálogo salvo localmente prevalece; use "Restaurar catálogo" em `#admin` ou limpe os dados do site.
-
-## Painel "Minha loja" (demonstração)
-Fica oculto para clientes. Acesse `seusite/#admin` para ver o botão. Cadastra/remove produtos e exporta pedidos, mas **só no navegador atual** (localStorage) e **sem login** — não é seguro nem compartilhado entre dispositivos.
-
-## Publicar na Cloudflare Pages (ou GitHub Pages)
-O projeto está ligado ao GitHub: a cada commit na `main`, a Cloudflare Pages roda o build e republica sozinha.
-- Framework preset: **Vite** · Build command: `npm run build` · Output directory: `dist`
-- Ao enviar uma nova versão pelo site do GitHub (*Add file → Upload files*), envie **todas as pastas** (`src`, `public`, `tests`) junto com os arquivos da raiz. Enviar só alguns arquivos deixa a loja misturando versões.
-- Depois do commit, acompanhe em *Cloudflare → Workers & Pages → elenilson-store → Deployments*. Se o build falhar, o site continua na versão anterior.
-- Dica: no navegador, use Ctrl+F5 para ignorar o cache.
-
-Para aparecer no Google, cadastre o site no Google Search Console e solicite a indexação.
+## Publicação
+Cada commit na `main` do GitHub é publicado automaticamente pela Cloudflare Pages (preset **Vite**, build `npm run build`, saída `dist`). A pasta `functions/` é detectada sozinha.

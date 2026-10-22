@@ -69,3 +69,12 @@ export const initialProducts = [
   // Casa
   P(49, 'Casa', 'Cadeado Pedra Top Security 38mm', 20, f(12), 'Cadeado de 38mm com chaves.', '🔒', HOME),
 ];
+
+/** Valores iniciais das configurações editáveis no painel. */
+export const DEFAULT_SETTINGS = {
+  storeName: 'Elenilson Store',
+  announcement: '✦ Ofertas especiais e novidades esperando por você ✦',
+  heroText: 'Produtos para facilitar sua rotina, renovar seu estilo e surpreender você — tudo em um só lugar.',
+  whatsappNumber: '',
+  pixKey: '',
+};

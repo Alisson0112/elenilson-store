@@ -3,10 +3,16 @@ import { normalize } from './utils.js';
 
 const HEX = /^#[0-9a-f]{6}$/i;
 // só caminhos locais em img/ ou URLs https — nunca javascript:/data:
-const IMG = /^(img\/[\w\-./]+\.(webp|jpe?g|png)|https:\/\/[^\s"'<>]+)$/i;
+const IMG = /^(img\/[\w\-./]+\.(webp|jpe?g|png)|\/api\/img\/[\w-]{6,40}|idb:[\w-]{6,60}|https:\/\/[^\s"'<>]+)$/i;
 export const sanitizeImages = (list) =>
   (Array.isArray(list) ? list : []).filter((u) => typeof u === 'string' && IMG.test(u)).slice(0, 8);
-export const thumbOf = (src) => (/^img\//.test(src) ? src.replace(/\.webp$/, '-sm.webp') : src);
+/** Miniatura correspondente: arquivo estático -sm.webp, imagem do servidor ?size=sm, imagem local idb:id-sm. */
+export function thumbOf(src) {
+  if (/^img\//.test(src)) return src.replace(/\.webp$/, '-sm.webp');
+  if (/^\/api\/img\//.test(src)) return src.split('?')[0] + '?size=sm';
+  if (/^idb:/.test(src)) return src + '-sm';
+  return src;
+}
 export const hasPrice = (p) => p.price > 0;
 
 /** Valida/normaliza um produto vindo de fora (localStorage, formulário). */
@@ -28,6 +34,8 @@ export function sanitizeProduct(raw) {
     desc: String(raw.desc ?? '').trim().slice(0, 200),
     tag: String(raw.tag ?? '').trim().slice(0, 20),
     images: sanitizeImages(raw.images),
+    active: raw.active !== false && raw.active !== 0 && raw.active !== 'false',
+    soldOut: raw.soldOut === true || raw.soldOut === 1 || raw.soldOut === 'true',
   };
 }
 
@@ -44,7 +52,7 @@ export function sanitizeProducts(list) {
 
 /** Mantém só itens existentes, com quantidade inteira entre 1 e max. */
 export function sanitizeCart(raw, products, max = 99) {
-  const ids = new Set(products.map((p) => p.id));
+  const ids = new Set(products.filter((p) => p.active !== false && !p.soldOut).map((p) => p.id));
   const cart = {};
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     for (const [k, v] of Object.entries(raw)) {
@@ -58,7 +66,7 @@ export function sanitizeCart(raw, products, max = 99) {
 export const cartCount = (cart) => Object.values(cart).reduce((a, b) => a + b, 0);
 
 export const cartItems = (cart, products) =>
-  products.filter((p) => cart[p.id]).map((p) => ({ ...p, qty: cart[p.id] }));
+  products.filter((p) => cart[p.id] && p.active !== false).map((p) => ({ ...p, qty: cart[p.id] }));
 
 export const cartHasUnpriced = (cart, products) => cartItems(cart, products).some((p) => !hasPrice(p));
 
@@ -82,6 +90,7 @@ export function interleaveByCategory(list) {
 export function filterProducts(products, { category = ALL, query = '', sort = 'featured', favorites = new Set() } = {}) {
   const q = normalize(query);
   const list = products.filter((p) => {
+    if (p.active === false) return false;
     if (category === FAVORITES) { if (!favorites.has(p.id)) return false; }
     else if (category !== ALL && p.category !== category) return false;
     return !q || normalize(`${p.name} ${p.category} ${p.desc}`).includes(q);
@@ -114,4 +123,49 @@ export function validateCheckout({ name, phone, address }, isValidPhone) {
   if (!isValidPhone(phone)) errors.phone = 'Informe um WhatsApp válido com DDD.';
   if (String(address ?? '').trim().length < 3) errors.address = 'Informe cidade e bairro.';
   return errors;
+}
+
+/* ---------- Configurações da loja ---------- */
+export const ORDER_STATUSES = ['Aguardando confirmação', 'Pago', 'Enviado', 'Entregue', 'Cancelado'];
+
+const str = (v, max) => String(v ?? '').trim().slice(0, max);
+export function sanitizeSettings(raw, defaults = {}) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const pick = (k, max) => (k in r ? str(r[k], max) : str(defaults[k], max));
+  const wa = (('whatsappNumber' in r ? r.whatsappNumber : defaults.whatsappNumber) ?? '').toString().replace(/\D/g, '').slice(0, 15);
+  return {
+    storeName: pick('storeName', 40) || str(defaults.storeName, 40) || 'Minha Loja',
+    announcement: pick('announcement', 140),
+    heroText: pick('heroText', 220),
+    whatsappNumber: wa.length >= 10 ? wa : '',
+    pixKey: pick('pixKey', 140),
+  };
+}
+
+/**
+ * Cria um pedido a partir do que o cliente enviou (só ids e quantidades): preços e totais vêm
+ * SEMPRE do catálogo do servidor, nunca do navegador. `isValidPhone` é injetado para ser reutilizável.
+ */
+export function createOrderFromRequest({ items, customer, products, isValidPhone, now = Date.now(), rand = Math.random }) {
+  if (!Array.isArray(items) || !items.length || items.length > 60) throw new Error('Carrinho inválido');
+  const byId = new Map(products.filter((p) => p.active !== false && !p.soldOut).map((p) => [p.id, p]));
+  const merged = new Map();
+  for (const it of items) {
+    const id = Number(it?.id), qty = Math.floor(Number(it?.qty));
+    if (!byId.has(id) || !(qty > 0)) throw new Error('Produto indisponível no pedido');
+    merged.set(id, Math.min((merged.get(id) || 0) + qty, 99));
+  }
+  const c = {
+    name: str(customer?.name, 80), phone: str(customer?.phone, 20),
+    address: str(customer?.address, 120), notes: str(customer?.notes, 300),
+  };
+  const errors = validateCheckout(c, isValidPhone);
+  if (Object.keys(errors).length) throw Object.assign(new Error('Dados inválidos'), { errors });
+  const lines = [...merged].map(([id, qty]) => { const p = byId.get(id); return { id, name: p.name, price: p.price, qty }; });
+  const total = Math.round(lines.reduce((sum, l) => sum + l.price * l.qty, 0) * 100) / 100;
+  return {
+    number: 'ES' + String(now).slice(-6) + Math.floor(rand() * 90 + 10),
+    date: new Date(now).toISOString(),
+    customer: c, items: lines, total, status: ORDER_STATUSES[0],
+  };
 }

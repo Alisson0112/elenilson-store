@@ -102,3 +102,45 @@ describe('logic', () => {
     expect(interleaveByCategory(initialProducts)).toHaveLength(initialProducts.length);
   });
 });
+
+import { thumbOf, sanitizeSettings, createOrderFromRequest, ORDER_STATUSES } from '../src/lib/logic.js';
+describe('v0.4', () => {
+  it('thumbOf para os 3 tipos de imagem', () => {
+    expect(thumbOf('img/f01.webp')).toBe('img/f01-sm.webp');
+    expect(thumbOf('/api/img/abc123def')).toBe('/api/img/abc123def?size=sm');
+    expect(thumbOf('idb:abc123')).toBe('idb:abc123-sm');
+  });
+  it('aceita imagens do servidor e locais, rejeita lixo', () => {
+    const p = sanitizeProduct({ id: 1, name: 'x', price: 1, images: ['/api/img/abc123def', 'idb:abc123', '/api/img/../../x', 'idb:a'] });
+    expect(p.images).toEqual(['/api/img/abc123def', 'idb:abc123']);
+  });
+  it('active/soldOut', () => {
+    expect(sanitizeProduct({ id: 1, name: 'x', price: 1 }).active).toBe(true);
+    expect(sanitizeProduct({ id: 1, name: 'x', price: 1, active: false }).active).toBe(false);
+    const prods = [{ ...initialProducts[0], active: false }, { ...initialProducts[1], soldOut: true }, initialProducts[2]];
+    expect(filterProducts(prods, {}).map((p) => p.id)).toEqual([2, 3]);
+    expect(sanitizeCart({ 1: 1, 2: 1, 3: 1 }, prods)).toEqual({ 3: 1 });
+  });
+  it('settings: limpa e valida whatsapp', () => {
+    const s = sanitizeSettings({ storeName: '  Loja X ', whatsappNumber: '+55 (83) 99999-8888', pixKey: 'a@b.c' });
+    expect(s.storeName).toBe('Loja X');
+    expect(s.whatsappNumber).toBe('5583999998888');
+    expect(sanitizeSettings({ whatsappNumber: '123' }).whatsappNumber).toBe('');
+    expect(sanitizeSettings(null, { storeName: 'D' }).storeName).toBe('D');
+  });
+  it('pedido do servidor ignora preço do cliente e junta itens repetidos', () => {
+    const o = createOrderFromRequest({
+      items: [{ id: 1, qty: 1, price: 0.01 }, { id: 1, qty: 2 }], products: initialProducts, isValidPhone: isValidPhoneBR,
+      customer: { name: 'Maria Souza', phone: '83999998888', address: 'Centro' }, now: 1700000123456, rand: () => 0,
+    });
+    expect(o.items).toEqual([{ id: 1, name: 'Fone Bluetooth', price: 79.9, qty: 3 }]);
+    expect(o.total).toBe(239.7);
+    expect(o.status).toBe(ORDER_STATUSES[0]);
+  });
+  it('pedido rejeita produto inativo, dados inválidos e carrinho vazio', () => {
+    const base = { products: [{ ...initialProducts[0], active: false }, initialProducts[1]], isValidPhone: isValidPhoneBR, customer: { name: 'Maria Souza', phone: '83999998888', address: 'Centro' } };
+    expect(() => createOrderFromRequest({ ...base, items: [{ id: 1, qty: 1 }] })).toThrow();
+    expect(() => createOrderFromRequest({ ...base, items: [] })).toThrow();
+    expect(() => createOrderFromRequest({ ...base, items: [{ id: 2, qty: 1 }], customer: { name: 'a', phone: '1', address: '' } })).toThrow('Dados inválidos');
+  });
+});
