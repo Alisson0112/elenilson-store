@@ -1,30 +1,40 @@
-# Elenilson Store — primeira versão
+# Elenilson Store — v0.3
 
-Loja virtual responsiva em React-free Vite/JavaScript para facilitar a publicação inicial em hospedagem estática gratuita.
+Loja virtual de demonstração em Vite + JavaScript puro (sem framework), pronta para hospedagem estática gratuita (GitHub Pages).
 
-## Executar localmente
-1. Instale Node.js em um ambiente que permita isso.
-2. Dentro da pasta, execute `npm install`.
-3. Execute `npm run dev` e abra o endereço mostrado no terminal.
-4. Para validar a versão de publicação, execute `npm run build`. A pasta final será `dist/`.
+## Rodar localmente
+```bash
+npm install
+npm run dev      # desenvolvimento
+npm test         # testes unitários (Vitest)
+npm run build    # gera dist/
+```
 
-## Recursos da demonstração
-- Catálogo, categorias, busca e ordenação por preço.
-- Carrinho persistido no navegador.
-- Formulário para registrar um pedido de demonstração.
-- Cadastro e remoção local de produtos pelo botão “Minha loja”.
-- Exportação dos pedidos de demonstração em JSON.
-- Layout responsivo e metadados básicos para mecanismos de busca.
+## Configurar a loja
+Edite `src/config.js`:
+- `whatsappNumber`: número da loja com país e DDD, só dígitos (ex.: `5583999999999`). Com ele, o pedido abre direto no WhatsApp com o resumo pronto. Vazio = o cliente copia o resumo.
+- `pixKey`: chave Pix exibida no pedido (opcional).
 
-## Importante antes de vender de verdade
-Esta primeira versão ainda NÃO é um sistema de produção: catálogo, carrinho e pedidos ficam apenas no navegador atual (`localStorage`); o pedido não é enviado à loja nem salvo em servidor. O painel administrativo não tem login e serve apenas para demonstração. O Pix ainda não tem chave configurada e nenhum pagamento é processado.
+## Catálogo e fotos
+O catálogo real fica em `src/lib/data.js` (49 produtos, 7 categorias). As fotos ficam em `public/img/` (`fNN.webp` grande e `fNN-sm.webp` miniatura).
+- Para trocar um preço, edite o número em `P(id, categoria, nome, PREÇO, ...)`. **Preço `0` = "Consulte o preço"** (o item entra no pedido e a loja informa o valor no atendimento).
+- Preços já preenchidos vieram das etiquetas visíveis nas fotos (cadeado, carregadores, Melão de São Caetano, Mounjaro Natural, GineVida). Confira.
+- Se mudar o catálogo depois de já ter aberto a loja num navegador, o catálogo salvo localmente prevalece; use "Restaurar catálogo" em `#admin` ou limpe os dados do site.
 
-Próxima etapa necessária: conectar a um projeto Supabase, criar tabelas e políticas de segurança (RLS), proteger o painel com autenticação, registrar pedidos no banco, configurar a chave Pix e o contato da loja, e só então publicar. Nunca colocar chave secreta de servidor no frontend.
+## Painel "Minha loja" (demonstração)
+Fica oculto para clientes. Acesse `seusite/#admin` para ver o botão. Cadastra/remove produtos e exporta pedidos, mas **só no navegador atual** (localStorage) e **sem login** — não é seguro nem compartilhado entre dispositivos.
 
-## Publicar gratuitamente na Cloudflare Pages
-Após configurar o projeto no GitHub, importe o repositório na Cloudflare Pages com:
-- Framework preset: Vite
-- Build command: `npm run build`
-- Build output directory: `dist`
+## Publicar no GitHub Pages
+1. Suba o projeto num repositório (branch `main`).
+2. Em *Settings → Pages*, escolha **Source: GitHub Actions**.
+3. O workflow `.github/workflows/deploy.yml` roda os testes, gera o build e publica a cada push.
 
-A Cloudflare fornece um subdomínio `*.pages.dev`. A publicação exige que o proprietário entre na sua conta e autorize a integração. Para aparecer no Google, após a publicação configure Google Search Console e solicite indexação; isso pode levar tempo e não garante posições.
+Para aparecer no Google, cadastre o site no Google Search Console e solicite a indexação.
+
+## O que mudou na v0.2
+**Bugs corrigidos:** categorias/busca/ordenação não funcionavam (handlers inline fora do escopo do módulo); carrinho fechava ao alterar quantidade; tela de sucesso do pedido sumia; XSS por nome/descrição/cor de produto; app quebrava com localStorage corrompido; categoria "Outros" inacessível; build sem `base` (quebrava em subcaminho); dependência `lucide` não usada; emoji duplicado.
+
+**Melhorias:** código modular e testado; busca instantânea sem perder o foco e sem depender de acento; favoritos persistentes; detalhe do produto; selo de desconto e ordenação por maior desconto; validação e máscara de telefone no checkout; pedido via WhatsApp; limite de quantidade; sincronização entre abas; modais acessíveis (Esc, foco preso, ARIA); link "pular para o conteúdo"; respeita `prefers-reduced-motion`; favicon, manifest, Open Graph e robots.txt; deploy automático.
+
+## Antes de vender de verdade
+Pedidos e catálogo ainda ficam só no navegador. Para uso real: banco de dados (ex.: Supabase com RLS), login no painel, chave Pix e WhatsApp configurados. Nunca coloque chaves secretas no frontend.

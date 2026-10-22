@@ -1,9 +1,16 @@
 {
   "name": "elenilson-store",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "scripts": {"dev": "vite --host 0.0.0.0", "build": "vite build", "preview": "vite preview --host 0.0.0.0"},
-  "dependencies": {"vite": "^6.1.0", "lucide": "^0.468.0"},
-  "devDependencies": {}
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vite": "^6.1.0",
+    "vitest": "^3.0.0"
+  }
 }
