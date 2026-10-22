@@ -89,6 +89,13 @@ function renderShell() {
   </main>
   <footer><a class="brand footer-brand" href="#top"></a><p>Seu próximo achadinho está aqui.</p>
     <div class="footer-bottom"><span id="footer-copy"></span><span>Pagamento via Pix · Atendimento ao cliente</span></div></footer>
+  <nav class="bottom-nav" aria-label="Navegação principal">
+    <button data-action="home" aria-label="Início"><span class="ico" aria-hidden="true">⌂</span>Início</button>
+    <button data-action="cats" aria-label="Categorias"><span class="ico" aria-hidden="true">☷</span>Categorias</button>
+    <button data-action="focusSearch" aria-label="Buscar"><span class="ico" aria-hidden="true">⌕</span>Buscar</button>
+    <button data-action="favs" aria-label="Favoritos"><span class="ico" aria-hidden="true">♡</span>Favoritos<b class="nav-badge" id="fav-count" hidden></b></button>
+    <button data-action="openCart" aria-label="Carrinho"><span class="ico" aria-hidden="true">🛒</span>Carrinho<b class="nav-badge" id="cart-count-nav" hidden></b></button>
+  </nav>
   <div id="overlay" class="overlay" data-action="overlay"></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>`;
 }
@@ -126,7 +133,17 @@ function renderCatalog() {
   $('#grid').innerHTML = shown.map(productCard).join('') ||
     `<div class="empty-state">${state.category === FAVORITES ? 'Você ainda não favoritou nenhum produto.' : 'Nenhum produto encontrado. Tente outra busca.'}${state.query ? ' <button class="text-button" data-action="clearSearch">Limpar busca</button>' : ''}</div>`;
 }
-function renderCartBadge() { $('#cart-count').textContent = cartCount(cart); }
+function renderCartBadge() {
+  const n = cartCount(cart);
+  $('#cart-count').textContent = n;
+  const nav = $('#cart-count-nav'); nav.textContent = n; nav.hidden = !n;
+  const fav = $('#fav-count'); fav.textContent = state.favorites.size; fav.hidden = !state.favorites.size;
+}
+/** Pequena animação no ícone do carrinho ao adicionar (feedback tátil visual). */
+function bumpCart() {
+  for (const el of document.querySelectorAll('#cart-count, #cart-count-nav')) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+  navigator.vibrate?.(12);
+}
 function refresh() { persist(); renderCatalog(); renderCartBadge(); }
 
 /* ---------- Toast ---------- */
@@ -138,22 +155,37 @@ export function toast(msg) {
 
 /* ---------- Modal acessível ---------- */
 let lastFocus = null;
+let modalInHistory = false; // há uma entrada no histórico representando o modal aberto?
 const overlay = () => $('#overlay');
 const isOpen = () => overlay().classList.contains('show');
-function openModal(html, labelId = 'modal-title') {
+const coarse = matchMedia('(pointer: coarse)');
+/** url: endereço a mostrar enquanto o modal está aberto (ex.: ?p=ID para link direto do produto). */
+function openModal(html, labelId = 'modal-title', url = null) {
   const ov = overlay();
-  if (!isOpen()) lastFocus = document.activeElement;
+  if (!isOpen()) {
+    lastFocus = document.activeElement;
+    try { history.pushState({ esModal: true }, '', url ?? location.href); modalInHistory = true; } catch { modalInHistory = false; }
+  } else if (url && modalInHistory) {
+    try { history.replaceState({ esModal: true }, '', url); } catch { /* ignore */ }
+  }
   ov.innerHTML = html.replace('<section class="modal', `<section role="dialog" aria-modal="true" aria-labelledby="${labelId}" class="modal`);
   ov.classList.add('show'); document.body.classList.add('no-scroll');
-  const first = $('input,textarea,select,button:not(.modal-close)', ov) || $('.modal-close', ov);
+  // no celular não foca campos automaticamente (abriria o teclado por cima da tela)
+  const first = coarse.matches ? $('.modal-close', ov) : ($('input,textarea,select,button:not(.modal-close)', ov) || $('.modal-close', ov));
   (first || ov).focus?.({ preventScroll: true });
 }
-function closeModal() {
+function hideModal() {
   if (!isOpen()) return;
   overlay().classList.remove('show'); overlay().innerHTML = '';
   document.body.classList.remove('no-scroll');
   lastFocus?.focus?.({ preventScroll: true }); lastFocus = null;
 }
+/** Fechar pela interface volta uma entrada no histórico; o evento popstate é quem esconde o modal. */
+function closeModal() {
+  if (!isOpen()) return;
+  if (modalInHistory) { modalInHistory = false; history.back(); } else hideModal();
+}
+window.addEventListener('popstate', () => { modalInHistory = false; hideModal(); });
 const closeBtn = '<button class="modal-close" data-action="closeModal" aria-label="Fechar">×</button>';
 
 /* ---------- Carrinho ---------- */
@@ -175,13 +207,47 @@ function showProduct(id) {
   const pct = discountPct(p);
   const imgs = p.images || [];
   const gallery = imgs.length
-    ? `<div class="detail-photo" style="background:${e(p.color)}"><img id="detail-main" src="${imgUrl(imgs[0])}" alt="${e(p.name)}"></div>${imgs.length > 1 ? `<div class="detail-thumbs">${imgs.map((src, i) => `<button class="${i ? '' : 'active'}" data-action="gallery" data-src="${imgUrl(src)}" aria-label="Ver foto ${i + 1}"><img src="${imgUrl(src, true)}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}`
+    ? `<div class="detail-photo" style="background:${e(p.color)}"><div class="detail-track" id="detail-track">${imgs.map((src, i) => `<img src="${imgUrl(src)}" alt="${e(p.name)}${imgs.length > 1 ? ` — foto ${i + 1} de ${imgs.length}` : ''}" ${i ? 'loading="lazy"' : ''} draggable="false">`).join('')}</div>
+      ${imgs.length > 1 ? `<div class="detail-dots" aria-hidden="true">${imgs.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>
+      ${imgs.length > 1 ? `<div class="detail-thumbs">${imgs.map((src, i) => `<button class="${i ? '' : 'active'}" data-action="gallery" data-index="${i}" aria-label="Ver foto ${i + 1}"><img src="${imgUrl(src, true)}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}`
     : `<div class="detail-visual" style="background:${e(p.color)}" aria-hidden="true">${e(p.emoji)}</div>`;
   openModal(`<section class="modal product-modal">${closeBtn}${gallery}
-  <span class="product-category">${e(p.category)}</span><h2 id="modal-title">${e(p.name)}</h2>
+  <div class="detail-head"><span class="product-category">${e(p.category)}</span>
+    <button class="share-btn" data-action="share" data-id="${p.id}" aria-label="Compartilhar produto">↗ Compartilhar</button></div>
+  <h2 id="modal-title">${e(p.name)}</h2>
   <p class="modal-intro">${e(p.desc) || 'Sem descrição.'}</p>
   <div class="prices">${priceHtml(p)}${pct ? `<span class="off inline">-${pct}%</span>` : ''}</div>
-  <button class="primary-button" data-action="addClose" data-id="${p.id}" ${p.soldOut ? 'disabled' : ''}>${p.soldOut ? 'Esgotado' : '＋ Adicionar ao carrinho'}</button></section>`);
+  <div class="sheet-cta"><button class="primary-button" data-action="addClose" data-id="${p.id}" ${p.soldOut ? 'disabled' : ''}>${p.soldOut ? 'Esgotado' : '＋ Adicionar ao carrinho'}</button></div></section>`,
+  'modal-title', productUrl(p.id));
+  const track = $('#detail-track');
+  track?.addEventListener('scroll', () => {
+    const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+    overlay().querySelectorAll('.detail-dots i').forEach((d, k) => d.classList.toggle('on', k === i));
+    overlay().querySelectorAll('.detail-thumbs button').forEach((b, k) => b.classList.toggle('active', k === i));
+  }, { passive: true });
+}
+const productUrl = (id) => `${location.pathname}?p=${id}`;
+
+/** Lista de categorias em tela de baixo para cima (celular). */
+function showCategories() {
+  const visible = state.products.filter((p) => p.active !== false);
+  const count = (c) => (c === ALL ? visible.length : c === FAVORITES ? state.favorites.size : visible.filter((p) => p.category === c).length);
+  openModal(`<section class="modal cats-modal">${closeBtn}<h2 id="modal-title">Categorias</h2>
+  <div class="cat-list">${getCategories(visible).map((c) => `<button class="${state.category === c ? 'active' : ''}" data-action="pickCat" data-value="${e(c)}"><span class="cat-ico" aria-hidden="true">${ICONS[c] || '•'}</span><span>${e(c)}</span><small>${count(c)}</small></button>`).join('')}</div></section>`);
+}
+
+/** Compartilhar: menu nativo do celular; senão, copia o link. */
+async function shareProduct(id) {
+  const p = state.products.find((x) => x.id === id); if (!p) return;
+  const url = new URL(productUrl(id), location.origin).href;
+  const text = `${p.name}${hasPrice(p) ? ` por ${money(p.price)}` : ''} na ${settings.storeName}`;
+  try {
+    if (navigator.share) { await navigator.share({ title: p.name, text, url }); return; }
+    await navigator.clipboard.writeText(`${text}: ${url}`); toast('Link do produto copiado!');
+  } catch (err) {
+    if (err?.name === 'AbortError') return; // usuário fechou o menu
+    window.open(`https://wa.me/?text=${encodeURIComponent(`${text}: ${url}`)}`, '_blank', 'noopener');
+  }
 }
 
 function showCheckout() {
@@ -244,6 +310,7 @@ async function submitCheckout(form) {
 }
 
 /* ---------- Ações (delegação de eventos) ---------- */
+const smooth = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 function addToCart(id) {
   const p = state.products.find((x) => x.id === id);
   if (!p || p.active === false || p.soldOut) return false;
@@ -252,8 +319,14 @@ function addToCart(id) {
 }
 const actions = {
   category: (el) => { state.category = el.dataset.value; renderCatalog(); },
-  add: (el) => { if (addToCart(Number(el.dataset.id))) toast('Produto adicionado ao carrinho!'); },
-  addClose: (el) => { if (addToCart(Number(el.dataset.id))) { closeModal(); toast('Produto adicionado ao carrinho!'); } },
+  add: (el) => { if (addToCart(Number(el.dataset.id))) { bumpCart(); toast('Produto adicionado ao carrinho!'); } },
+  addClose: (el) => { if (addToCart(Number(el.dataset.id))) { closeModal(); bumpCart(); toast('Produto adicionado ao carrinho!'); } },
+  home: () => { state.category = ALL; renderCatalog(); window.scrollTo({ top: 0, behavior: smooth() }); },
+  cats: showCategories,
+  pickCat: (el) => { state.category = el.dataset.value; renderCatalog(); closeModal(); setTimeout(() => $('#catalogo').scrollIntoView({ behavior: smooth() }), 60); },
+  favs: () => { state.category = FAVORITES; renderCatalog(); $('#catalogo').scrollIntoView({ behavior: smooth() }); },
+  focusSearch: () => { window.scrollTo({ top: 0, behavior: smooth() }); $('#search').focus({ preventScroll: true }); },
+  share: (el) => shareProduct(Number(el.dataset.id)),
   fav: (el) => {
     const id = Number(el.dataset.id);
     state.favorites.has(id) ? state.favorites.delete(id) : state.favorites.add(id);
@@ -261,8 +334,8 @@ const actions = {
   },
   view: (el) => showProduct(Number(el.dataset.id)),
   gallery: (el) => {
-    $('#detail-main').src = el.dataset.src;
-    el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === el));
+    const track = $('#detail-track');
+    track?.scrollTo({ left: Number(el.dataset.index) * track.clientWidth, behavior: smooth() });
   },
   openCart: showCart,
   checkout: showCheckout,
@@ -276,7 +349,7 @@ const actions = {
     try { await navigator.clipboard.writeText(lastOrderText); toast('Resumo copiado!'); } catch { toast('Não foi possível copiar. Selecione o texto manualmente.'); }
   },
   clearSearch: () => { state.query = ''; $('#search').value = ''; renderCatalog(); },
-  scroll: (el) => $(el.dataset.target)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }),
+  scroll: (el) => $(el.dataset.target)?.scrollIntoView({ behavior: smooth() }),
   toast: (el) => toast(el.dataset.msg),
   closeModal,
   overlay: (el, ev) => { if (ev.target === el) closeModal(); },
@@ -374,3 +447,14 @@ renderCatalog();
 renderCartBadge();
 const bootPromise = initBackend();
 if (location.hash === '#admin') syncAdminRoute();
+else openDeepLink();
+
+/** Quem chega por um link de produto (?p=ID) vê o produto aberto; "voltar" leva para a loja, não para fora. */
+async function openDeepLink() {
+  const id = Number(new URLSearchParams(location.search).get('p'));
+  if (!Number.isInteger(id) || id <= 0) return;
+  history.replaceState(null, '', location.pathname);
+  await bootPromise;
+  if (state.products.some((p) => p.id === id && p.active !== false)) showProduct(id);
+  else toast('Este produto não está mais disponível.');
+}

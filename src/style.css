@@ -117,3 +117,92 @@ body.admin-open #app{display:none}
   .adm-two{grid-template-columns:1fr}.adm-top{padding:10px 12px}.adm-dialog-actions{bottom:-20px}
 }
 @media(prefers-reduced-motion:reduce){.adm-toast{transition:none}}
+
+/* ===== v0.5: experiência de app no navegador do celular ===== */
+html{-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+button,a,[role=button]{touch-action:manipulation}
+.bottom-nav{display:none}
+.detail-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.share-btn{border:1px solid #e4e7ed;background:#fff;border-radius:20px;padding:7px 12px;font-size:12px;font-weight:700;color:#30394b}
+.share-btn:hover{background:#f4f6fa}
+.detail-photo{position:relative}
+.detail-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain}
+.detail-track::-webkit-scrollbar{display:none}
+.detail-track img{flex:0 0 100%;scroll-snap-align:center;display:block;width:100%;max-height:min(55vh,460px);object-fit:contain;background:#fff;user-select:none}
+.detail-dots{display:none;position:absolute;left:0;right:0;bottom:10px;justify-content:center;gap:6px;pointer-events:none}
+.detail-dots i{width:7px;height:7px;border-radius:50%;background:#ffffffa0;box-shadow:0 0 0 1px #0002;transition:width .2s}
+.detail-dots i.on{width:18px;border-radius:4px;background:#f4a62a}
+.sheet-cta .primary-button{margin-top:16px}
+.cat-list{display:grid;gap:6px}
+.cat-list button{display:flex;align-items:center;gap:12px;width:100%;padding:13px 14px;border:1px solid #eceef3;border-radius:12px;background:#fff;font-size:15px;font-weight:600;color:#202a3b;text-align:left}
+.cat-list button.active{border-color:#f4a62a;background:#fff8ea}
+.cat-list .cat-ico{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:#fff1d8;color:#80510c}
+.cat-list small{margin-left:auto;color:#8a92a0;font-weight:600}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+.bump{animation:bump .35s ease}
+@keyframes sheet-up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+
+@media(max-width:700px){
+  body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+  /* barra de navegação inferior, como em apps */
+  .bottom-nav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:15;background:#fffffff2;backdrop-filter:saturate(1.6) blur(12px);-webkit-backdrop-filter:saturate(1.6) blur(12px);border-top:1px solid #e6e8ee;padding:4px 4px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px #1720330d}
+  .bottom-nav button{position:relative;border:0;background:none;display:grid;justify-items:center;align-content:center;gap:3px;min-height:54px;padding:4px 0;font-size:10.5px;font-weight:600;color:#5c6575}
+  .bottom-nav button{border-radius:12px}
+  .bottom-nav .ico{font-size:21px;line-height:1;color:#263044}
+  .nav-badge{position:absolute;top:3px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#f4a62a;color:#151b28;font-size:10px;line-height:18px;font-weight:800}
+  .nav-badge[hidden]{display:none}
+  /* cabeçalho fixo e compacto, com a busca sempre à mão */
+  .header{position:sticky;top:0;z-index:14;background:#f7f8fbf2;backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);padding:8px 14px 10px;gap:8px}
+  .header .cart-button,.header .menu-btn,.header-actions{display:none}
+  .category-nav{display:none}
+  .announcement{padding:7px 12px}
+  /* abertura menor: produtos aparecem logo na primeira tela */
+  .hero{min-height:0;margin:10px 12px 14px;padding:22px 20px;border-radius:18px}
+  .hero-art,.hero-benefits{display:none}
+  .hero h1{font-size:28px;margin:10px 0 8px;letter-spacing:-1px}
+  .hero p{font-size:13px;margin:0 0 16px;line-height:1.6}
+  .hero-cta{padding:12px 16px}
+  .benefit-row{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 12px 22px;padding:10px;gap:8px}
+  .benefit-row::-webkit-scrollbar{display:none}
+  .benefit-row>div{flex:0 0 68%;scroll-snap-align:start;padding:4px}
+  .category-pills{margin:14px -12px 12px;padding:0 12px 4px;scrollbar-width:none}
+  .category-pills::-webkit-scrollbar{display:none}
+  .category-pills button{padding:10px 16px;font-size:13px}
+  .add-button{min-height:40px;font-size:11px}
+  .product-card:hover{transform:none;box-shadow:none}
+  /* campos com 16px: o iPhone não dá zoom ao tocar */
+  .search input,.checkout-form input,.checkout-form textarea,.checkout-form select,.sort-label select{font-size:16px}
+  /* modais viram telas que sobem de baixo */
+  .overlay{align-items:flex-end;padding:0;animation:fade-in .2s ease}
+  .modal{width:100%;max-height:calc(100dvh - 20px);border-radius:22px 22px 0 0;padding:26px 16px calc(14px + env(safe-area-inset-bottom));animation:sheet-up .28s cubic-bezier(.2,.8,.2,1);overscroll-behavior:contain}
+  .modal::before{content:'';position:absolute;top:8px;left:50%;width:40px;height:4px;margin-left:-20px;border-radius:2px;background:#d6dae2;z-index:3}
+  .modal-close{top:12px;right:12px;width:38px;height:38px;z-index:4;background:#fffffff0;box-shadow:0 2px 8px #0002}
+  .product-modal{padding-top:0}
+  .product-modal .detail-photo{margin:0 -16px 14px;border-radius:22px 22px 0 0;overflow:hidden}
+  .detail-track img{max-height:52vh;min-height:280px}
+  .detail-dots{display:flex}
+  .detail-thumbs{display:none}
+  .sheet-cta{position:sticky;bottom:calc(-14px - env(safe-area-inset-bottom));margin:12px -16px 0;padding:10px 16px calc(12px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #eef0f4}
+  .sheet-cta .primary-button{margin-top:0;min-height:50px;font-size:15px}
+  .primary-button{min-height:48px;font-size:14px}
+  .cart-lines{max-height:none}
+  .qty button{width:34px;height:34px;font-size:16px}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom));width:max-content;max-width:calc(100vw - 32px)}
+}
+@media(prefers-reduced-motion:reduce){.modal,.overlay,.bump{animation:none!important}}
+/* celular: abertura enxuta para os produtos aparecerem na primeira tela */
+@media(max-width:700px){
+  .hero{padding:18px 18px;margin:8px 12px 10px}
+  .hero .eyebrow,.hero p,.benefit-row{display:none}
+  .hero h1{font-size:24px;line-height:1.15;margin:0 0 12px}
+  .hero-cta{padding:10px 14px;font-size:13px}
+  .hero-cta span{margin-left:10px}
+  .catalog .section-heading .eyebrow{display:none}
+  .section-heading{flex-direction:row;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:6px}
+  .section-heading h2{font-size:21px;margin:0}
+  .section-heading p{font-size:12px}
+  .sort-label{align-self:auto;margin-top:0}
+  .sort-label select{padding:7px 8px}
+}
+@media(hover:none){.bottom-nav button:active{background:#f4f6fa}}

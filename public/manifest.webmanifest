@@ -1,1 +1,17 @@
-{"name":"Elenilson Store","short_name":"Elenilson","description":"Ofertas e produtos variados","start_url":"./","display":"standalone","background_color":"#f7f8fb","theme_color":"#101827","lang":"pt-BR","icons":[{"src":"favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}
+{
+  "name": "Elenilson Store",
+  "short_name": "Elenilson",
+  "description": "Relógios, beleza, bem-estar, produtos naturais e eletrônicos. Peça pelo WhatsApp.",
+  "start_url": "./?source=app",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f8fb",
+  "theme_color": "#101827",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

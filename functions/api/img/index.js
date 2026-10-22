@@ -2,7 +2,7 @@ import { handle, json, readJson, HttpError } from '../../_lib/http.js';
 import { getDb, nowSec } from '../../_lib/db.js';
 import { requireAdmin } from '../../_lib/auth.js';
 
-const MAX = { full: 700_000, sm: 160_000 }; // tamanho máximo em caracteres base64
+const MAX = { full: 700_000, sm: 160_000, og: 300_000 }; // tamanho máximo em caracteres base64
 
 /** Confere o tipo real pelos primeiros bytes (não confia só no que o navegador declarou). */
 function sniff(b64) {
@@ -26,13 +26,16 @@ function parse(dataUrl, size) {
 export const onRequestPost = handle(async ({ request, env }) => {
   await requireAdmin(request, env);
   const db = await getDb(env);
-  const body = await readJson(request, 1_000_000);
+  const body = await readJson(request, 1_300_000);
   const full = parse(body.full, 'full'), sm = parse(body.thumb, 'sm');
+  const og = body.og ? parse(body.og, 'og') : null; // cópia JPEG usada na prévia de links (WhatsApp)
+  if (og && og.type !== 'image/jpeg') throw new HttpError(400, 'invalid_image');
   const id = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
   const t = nowSec();
   await db.batch([
     db.prepare('INSERT INTO images (id, size, type, data, created_at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(id, 'full', full.type, full.data, t),
     db.prepare('INSERT INTO images (id, size, type, data, created_at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(id, 'sm', sm.type, sm.data, t),
+    ...(og ? [db.prepare('INSERT INTO images (id, size, type, data, created_at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(id, 'og', og.type, og.data, t)] : []),
   ]);
   return json({ url: `/api/img/${id}` }, 201);
 });

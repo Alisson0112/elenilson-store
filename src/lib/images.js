@@ -2,6 +2,7 @@
 
 const FULL = { side: 960, quality: 0.82, maxChars: 600_000 };
 const THUMB = { side: 400, quality: 0.75, maxChars: 140_000 };
+const OG = { side: 640, quality: 0.78, maxChars: 280_000, mime: 'image/jpeg' }; // prévia de links (WhatsApp não lê WebP bem)
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 const MIME = (() => {
@@ -23,7 +24,7 @@ async function decode(file) {
 }
 
 /** Desenha em canvas (fundo branco p/ PNG transparente) e reduz qualidade/tamanho até caber no limite. */
-function encode(src, { side, quality, maxChars }) {
+function encode(src, { side, quality, maxChars, mime = MIME }) {
   const w0 = src.width || src.naturalWidth, h0 = src.height || src.naturalHeight;
   let s = Math.min(1, side / Math.max(w0, h0));
   for (let attempt = 0; attempt < 6; attempt++, s *= 0.8) {
@@ -33,19 +34,19 @@ function encode(src, { side, quality, maxChars }) {
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
     for (let q = quality; q >= 0.5; q -= 0.08) {
-      const url = canvas.toDataURL(MIME, q);
+      const url = canvas.toDataURL(mime, q);
       if (url.length <= maxChars) return url;
     }
   }
   throw new Error('Imagem grande demais mesmo após reduzir.');
 }
 
-/** File → { full, thumb } (data URLs). */
+/** File → { full, thumb, og } (data URLs). */
 export async function processImage(file) {
   if (!file?.type?.startsWith('image/')) throw new Error('Escolha um arquivo de imagem (JPG, PNG ou WebP).');
   if (file.size > MAX_FILE_BYTES) throw new Error('Imagem maior que 25 MB.');
   const bmp = await decode(file);
-  try { return { full: encode(bmp, FULL), thumb: encode(bmp, THUMB) }; }
+  try { return { full: encode(bmp, FULL), thumb: encode(bmp, THUMB), og: encode(bmp, OG) }; }
   finally { bmp.close?.(); }
 }
 

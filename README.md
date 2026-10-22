@@ -1,4 +1,4 @@
-# Elenilson Store — v0.4
+# Elenilson Store — v0.5
 
 Loja virtual em Vite + JavaScript puro, hospedada grátis na **Cloudflare Pages**, com **painel administrativo completo** e banco de dados **Cloudflare D1**.
 
@@ -10,6 +10,14 @@ Tudo é editável, sem mexer em código:
 - **Pedidos:** todos os pedidos dos clientes, com status (Aguardando, Pago, Enviado, Entregue, Cancelado), botão para o WhatsApp do cliente e exportação para planilha (CSV).
 - **Loja:** nome, aviso do topo, texto de boas-vindas, WhatsApp e chave Pix.
 - **Backup:** baixar/importar backup e restaurar o catálogo inicial.
+
+## No celular (pelo link, sem instalar nada)
+- Barra inferior de app: Início, Categorias, Buscar, Favoritos e Carrinho.
+- Produto, carrinho e checkout abrem como telas que sobem de baixo; fotos passam com o dedo.
+- O botão **Voltar** do celular fecha a tela aberta em vez de sair da loja.
+- Campos com 16px: o iPhone não dá zoom ao digitar.
+- Cada produto tem link próprio (`/?p=ID`) e botão **Compartilhar**. Ao mandar esse link no WhatsApp, a prévia mostra a **foto, o nome e o preço do produto** (gerada no servidor por `functions/index.js`).
+- Quem quiser pode "Adicionar à tela inicial": há ícones e manifesto de app.
 
 ## ⚠️ Ativar o banco de dados (obrigatório para as edições valerem para todos)
 Sem esta etapa, a loja funciona normalmente, mas o painel abre em **modo local**: as alterações ficam só no navegador de quem editou. Faça uma vez (≈5 min), no painel da Cloudflare:
