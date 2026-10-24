@@ -2,6 +2,7 @@ import { handle, json, readJson, HttpError } from '../_lib/http.js';
 import { getDb, saveProduct, saveSettings, markSeeded, gcImages, listProducts, getSettings } from '../_lib/db.js';
 import { requireOwner } from '../_lib/auth.js';
 import { sanitizeProducts, sanitizeSettings } from '../../src/lib/logic.js';
+import { CATALOG_VERSION } from '../../src/lib/data.js';
 
 // Substitui todo o catálogo (usado para ativar o painel com o catálogo inicial, restaurar e importar backup).
 export const onRequestPost = handle(async ({ request, env }) => {
@@ -15,6 +16,7 @@ export const onRequestPost = handle(async ({ request, env }) => {
   for (const [i, p] of products.entries()) await saveProduct(db, p, i + 1);
   if (body.settings) await saveSettings(db, sanitizeSettings(body.settings, (await getSettings(db)).settings));
   await markSeeded(db);
+  await saveSettings(db, { _catalogVersion: CATALOG_VERSION });
   await gcImages(db);
   return json({ products: await listProducts(db), settings: (await getSettings(db)).settings });
 });

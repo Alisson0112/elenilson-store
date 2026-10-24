@@ -1,8 +1,8 @@
 import './style.css';
 import { CONFIG } from './config.js';
-import { initialProducts, ALL, FAVORITES } from './lib/data.js';
+import { initialProducts, ALL, FAVORITES, CATALOG_VERSION, CATALOG_UPDATES } from './lib/data.js';
 import { escapeHtml as e, money, formatPhoneBR, isValidPhoneBR, discountPct, createStorage, buildOrderText, buildWhatsAppUrl } from './lib/utils.js';
-import { sanitizeProducts, sanitizeCart, cartCount, cartItems, cartTotal, cartHasUnpriced, hasPrice, thumbOf, getCategories, filterProducts, createOrder, validateCheckout } from './lib/logic.js';
+import { sanitizeProducts, mergeCatalog, interleaveByCategory, sanitizeCart, cartCount, cartItems, cartTotal, cartHasUnpriced, hasPrice, thumbOf, getCategories, filterProducts, createOrder, validateCheckout } from './lib/logic.js';
 import { backend, settings, applySettings, api, fetchCatalog } from './lib/backend.js';
 import { resolveSrc, preloadLocalImages } from './lib/images.js';
 
@@ -48,6 +48,9 @@ export function applyBranding() {
   $('#footer-copy').textContent = `© ${new Date().getFullYear()} ${name}. Todos os direitos reservados.`;
   $('#news-btn').dataset.msg = `Obrigado por visitar a ${name}!`;
   for (const el of document.querySelectorAll('.brand')) { el.innerHTML = brandHtml(name); el.setAttribute('aria-label', `${name} — início`); }
+  const wa = $('#wa-float');
+  wa.hidden = !settings.whatsappNumber;
+  if (settings.whatsappNumber) wa.href = buildWhatsAppUrl(settings.whatsappNumber, `Olá! Vim pelo site da ${name} e gostaria de uma informação.`);
 }
 
 /* ---------- Shell (renderizado uma única vez) ---------- */
@@ -72,12 +75,14 @@ function renderShell() {
       <p id="hero-text"></p>
       <button class="hero-cta" data-action="scroll" data-target="#catalogo">Explorar produtos <span aria-hidden="true">→</span></button>
       <div class="hero-benefits"><span>✓ Compra prática</span><span>✓ Pagamento via Pix</span></div></div>
-      <div class="hero-art" aria-hidden="true"><div class="hero-circle"></div><div class="float-card fc-one">🎧 <span>Tech do dia</span></div><div class="float-card fc-two">✨ <span>Achadinhos</span></div><div class="hero-bag">🛍️</div><div class="hero-sticker">OFERTAS<br><b>TOP</b></div></div></section>
+      <div class="hero-art photos" id="hero-art"></div></section>
+    <section class="cat-tiles-wrap" aria-labelledby="cat-tiles-title"><div class="row-head"><h2 id="cat-tiles-title">Compre por categoria</h2></div><div class="cat-tiles" id="cat-tiles"></div></section>
     <section class="benefit-row" aria-label="Vantagens">
       <div><span class="benefit-icon" aria-hidden="true">🚚</span><span><b>Entrega combinada</b><small>Consulte opções no pedido</small></span></div>
       <div><span class="benefit-icon" aria-hidden="true">🔒</span><span><b>Compra com tranquilidade</b><small>Atendimento direto</small></span></div>
       <div><span class="benefit-icon" aria-hidden="true">⚡</span><span><b>Pagamento via Pix</b><small>Simples e prático</small></span></div>
       <div><span class="benefit-icon" aria-hidden="true">💬</span><span><b>Fale com a loja</b><small>Atendimento personalizado</small></span></div></section>
+    <section class="new-arrivals" id="new-arrivals" aria-labelledby="new-title" hidden><div class="row-head"><div><span class="eyebrow">ACABARAM DE CHEGAR</span><h2 id="new-title">Novidades na loja</h2></div><div class="row-arrows"><button class="arrow" data-action="slide" data-dir="-1" aria-label="Anteriores">‹</button><button class="arrow" data-action="slide" data-dir="1" aria-label="Próximos">›</button></div></div><div class="new-track" id="new-track"></div></section>
     <section class="catalog" id="catalogo">
       <div class="section-heading"><div><span class="eyebrow">ESCOLHA O SEU PRÓXIMO FAVORITO</span><h2 id="catalog-title">Destaques da loja</h2><p id="result-count" aria-live="polite"></p></div>
         <label class="sort-label">Ordenar por <select id="sort"><option value="featured">Destaques</option><option value="price-up">Menor preço</option><option value="price-down">Maior preço</option><option value="discount">Maior desconto</option></select></label></div>
@@ -89,6 +94,7 @@ function renderShell() {
   </main>
   <footer><a class="brand footer-brand" href="#top"></a><p>Seu próximo achadinho está aqui.</p>
     <div class="footer-bottom"><span id="footer-copy"></span><span>Pagamento via Pix · Atendimento ao cliente</span></div></footer>
+  <a class="wa-float" id="wa-float" href="#" target="_blank" rel="noopener noreferrer" aria-label="Falar com a loja no WhatsApp" hidden><svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 3C8.8 3 3 8.7 3 15.8c0 2.5.7 4.9 2.1 7L3 29l6.4-2c2 1.1 4.3 1.7 6.6 1.7 7.2 0 13-5.7 13-12.8S23.2 3 16 3zm0 23.4c-2.1 0-4.1-.6-5.9-1.6l-.4-.3-3.8 1.2 1.2-3.7-.3-.4a10.4 10.4 0 0 1-1.7-5.8C5.1 9.9 10 5.2 16 5.2s10.9 4.7 10.9 10.6S22 26.4 16 26.4zm6-7.9c-.3-.2-2-1-2.3-1.1-.3-.1-.5-.2-.7.2l-1 1.3c-.2.2-.4.2-.7.1-.3-.2-1.4-.5-2.7-1.7-1-.9-1.7-2-1.9-2.3-.2-.3 0-.5.1-.7l.5-.6.3-.5c.1-.2 0-.4 0-.6l-1-2.4c-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.1-1.2 2.8s1.2 3.2 1.4 3.5c.2.2 2.4 3.6 5.8 5 .8.4 1.4.6 1.9.7.8.3 1.6.2 2.2.1.7-.1 2-.8 2.3-1.6.3-.8.3-1.5.2-1.6-.1-.2-.3-.3-.6-.4z"/></svg></a>
   <nav class="bottom-nav" aria-label="Navegação principal">
     <button data-action="home" aria-label="Início"><span class="ico" aria-hidden="true">⌂</span>Início</button>
     <button data-action="cats" aria-label="Categorias"><span class="ico" aria-hidden="true">☷</span>Categorias</button>
@@ -101,7 +107,7 @@ function renderShell() {
 }
 
 /* ---------- Partes dinâmicas ---------- */
-const ICONS = { [ALL]: '☷', Relógios: '◷', Eletrônicos: '▣', Moda: '♧', Beleza: '✧', 'Bem-estar': '✚', Natural: '❀', Casa: '⌂', [FAVORITES]: '♥' };
+const ICONS = { [ALL]: '☷', Perfumes: '❦', Acessórios: '✿', Relógios: '◷', Eletrônicos: '▣', Moda: '♧', Beleza: '✧', 'Bem-estar': '✚', Natural: '❀', Casa: '⌂', [FAVORITES]: '♥' };
 const priceHtml = (p) => (hasPrice(p) ? `<strong>${money(p.price)}</strong>${p.oldPrice ? `<del>${money(p.oldPrice)}</del>` : ''}` : '<strong class="ask">Consulte o preço</strong>');
 const visual = (p) => (p.images?.length ? `<img src="${imgUrl(p.images[0], true)}" alt="${e(p.name)}" loading="lazy" decoding="async" width="360" height="480">` : `<span class="product-emoji" aria-hidden="true">${e(p.emoji)}</span>`);
 
@@ -111,7 +117,7 @@ function productCard(p) {
   const inCart = cart[p.id] || 0;
   return `<article class="product-card ${p.soldOut ? 'sold-out' : ''}">
     <div class="product-visual ${p.images?.length ? 'has-img' : ''}" style="--product-bg:${e(p.color)}" data-action="view" data-id="${p.id}" role="button" tabindex="0" aria-label="Ver detalhes de ${e(p.name)}">
-      ${p.soldOut ? '<span class="tag soldout-tag">ESGOTADO</span>' : p.tag ? `<span class="tag">${e(p.tag)}</span>` : ''}${pct && !p.soldOut ? `<span class="off">-${pct}%</span>` : ''}
+      ${p.soldOut ? '<span class="tag soldout-tag">ESGOTADO</span>' : p.tag ? `<span class="tag ${p.tag === 'NOVO' ? 'tag-new' : ''}">${e(p.tag)}</span>` : ''}${pct && !p.soldOut ? `<span class="off">-${pct}%</span>` : ''}
       <button class="heart ${fav ? 'active' : ''}" data-action="fav" data-id="${p.id}" aria-pressed="${fav}" aria-label="${fav ? 'Remover dos' : 'Adicionar aos'} favoritos">${fav ? '♥' : '♡'}</button>
       ${visual(p)}</div>
     <div class="product-info"><span class="product-category">${e(p.category)}</span><h3>${e(p.name)}</h3>
@@ -128,11 +134,46 @@ function renderCatalog() {
   $('#category-nav').innerHTML = cats.map((c) => `<button class="${state.category === c ? 'active' : ''}" data-action="category" data-value="${e(c)}" aria-pressed="${state.category === c}">${ICONS[c] || '•'} &nbsp;${e(label(c))}</button>`).join('') + '<span class="nav-note">Novas ofertas toda semana</span>';
   $('#category-pills').innerHTML = cats.map((c) => `<button class="${state.category === c ? 'selected' : ''}" data-action="category" data-value="${e(c)}" aria-pressed="${state.category === c}">${e(label(c))}</button>`).join('');
   const shown = filterProducts(state.products, state);
+  renderHighlights();
   $('#catalog-title').textContent = state.category === ALL ? 'Destaques da loja' : state.category;
   $('#result-count').textContent = shown.length === 1 ? '1 produto encontrado.' : `${shown.length} produtos encontrados.`;
   $('#grid').innerHTML = shown.map(productCard).join('') ||
     `<div class="empty-state">${state.category === FAVORITES ? 'Você ainda não favoritou nenhum produto.' : 'Nenhum produto encontrado. Tente outra busca.'}${state.query ? ' <button class="text-button" data-action="clearSearch">Limpar busca</button>' : ''}</div>`;
 }
+/* ---------- Vitrines: banner com fotos reais, categorias com foto e novidades ---------- */
+const HERO_ORDER = ['Perfumes', 'Relógios', 'Beleza', 'Acessórios', 'Natural', 'Bem-estar', 'Eletrônicos', 'Moda', 'Casa'];
+function renderHighlights() {
+  const visible = state.products.filter((p) => p.active !== false && p.images?.length);
+  // banner: 3 produtos de categorias diferentes, preferindo novidades
+  const picks = [];
+  for (const cat of HERO_ORDER) {
+    const inCat = visible.filter((p) => p.category === cat && !p.soldOut);
+    const p = inCat.find((x) => x.tag === 'NOVO' && x.price > 0) || inCat.find((x) => x.tag === 'NOVO') || inCat[0];
+    if (p) picks.push(p);
+    if (picks.length === 3) break;
+  }
+  $('#hero-art').innerHTML = picks.map((p, i) => `<button class="hero-photo hp-${i}" data-action="view" data-id="${p.id}" aria-label="Ver ${e(p.name)}">
+    <img src="${imgUrl(p.images[0], true)}" alt="" width="360" height="480" ${i ? 'loading="lazy"' : 'fetchpriority="high"'}>
+    <span class="hp-label"><b>${e(p.name.split(' — ')[0])}</b><i>${hasPrice(p) ? money(p.price) : 'Consulte'}</i></span></button>`).join('');
+  // categorias com foto
+  const cats = getCategories(state.products.filter((p) => p.active !== false)).filter((c) => c !== ALL && c !== FAVORITES);
+  $('#cat-tiles').innerHTML = cats.map((c) => {
+    const list = visible.filter((p) => p.category === c);
+    const cover = list.find((p) => p.tag !== 'NOVO') || list[0];
+    const n = state.products.filter((p) => p.active !== false && p.category === c).length;
+    return `<button class="cat-tile ${state.category === c ? 'active' : ''}" data-action="pickCat" data-value="${e(c)}">
+      <span class="ct-img">${cover ? `<img src="${imgUrl(cover.images[0], true)}" alt="" loading="lazy" width="120" height="160">` : `<i>${ICONS[c] || '•'}</i>`}</span>
+      <b>${e(c)}</b><small>${n} ${n === 1 ? 'item' : 'itens'}</small></button>`;
+  }).join('');
+  // novidades
+  const fresh = interleaveByCategory(state.products.filter((p) => p.active !== false && p.tag === 'NOVO')).slice(0, 16);
+  $('#new-arrivals').hidden = !fresh.length;
+  $('#new-track').innerHTML = fresh.map((p) => `<article class="mini-card">
+    <button class="mini-visual" data-action="view" data-id="${p.id}" style="--product-bg:${e(p.color)}" aria-label="Ver ${e(p.name)}">${visual(p)}<span class="tag tag-new">NOVO</span></button>
+    <div class="mini-info"><span class="product-category">${e(p.category)}</span><h3>${e(p.name)}</h3><div class="prices">${priceHtml(p)}</div>
+    <button class="mini-add" data-action="add" data-id="${p.id}" ${p.soldOut ? 'disabled' : ''} aria-label="Adicionar ${e(p.name)} ao carrinho">${p.soldOut ? 'Esgotado' : '＋ Adicionar'}</button></div></article>`).join('');
+}
+
 function renderCartBadge() {
   const n = cartCount(cart);
   $('#cart-count').textContent = n;
@@ -327,6 +368,7 @@ const actions = {
   favs: () => { state.category = FAVORITES; renderCatalog(); $('#catalogo').scrollIntoView({ behavior: smooth() }); },
   focusSearch: () => { window.scrollTo({ top: 0, behavior: smooth() }); $('#search').focus({ preventScroll: true }); },
   share: (el) => shareProduct(Number(el.dataset.id)),
+  slide: (el) => { const t = $('#new-track'); t.scrollBy({ left: Number(el.dataset.dir) * t.clientWidth * 0.85, behavior: smooth() }); },
   fav: (el) => {
     const id = Number(el.dataset.id);
     state.favorites.has(id) ? state.favorites.delete(id) : state.favorites.add(id);
@@ -435,6 +477,12 @@ async function initBackend() {
     cart = sanitizeCart(cart, state.products, MAX);
   } catch {
     backend.mode = 'local'; // sem servidor (ou servidor ainda não configurado): usa o navegador
+    const saved = storage.get(KEYS.products, null);
+    const from = Number(storage.get('es_catalog_version', 1)) || 1;
+    if (saved && from < CATALOG_VERSION) {
+      state.products = mergeCatalog(state.products, { fromVersion: from, toVersion: CATALOG_VERSION, initial: initialProducts, updates: CATALOG_UPDATES }).products;
+    }
+    storage.set('es_catalog_version', CATALOG_VERSION);
   }
   applyBranding();
   await preloadLocalImages(state.products);

@@ -1,4 +1,4 @@
-# Elenilson Store — v0.6
+# Elenilson Store — v0.7
 
 Loja virtual em Vite + JavaScript puro, hospedada grátis na **Cloudflare Pages**, com **painel administrativo completo** e banco de dados **Cloudflare D1**.
 
@@ -25,6 +25,15 @@ Acesso com **usuário e senha**. Tudo é editável, sem mexer em código:
 ### Esqueci a senha
 - **Funcionário:** o Dono redefine em *Usuários → Editar → Nova senha*.
 - **Dono:** na tela de login, “Esqueci minha senha” → informe a **chave de configuração** (o `ADMIN_PASSWORD` da Cloudflare), o usuário e a nova senha.
+
+## Catálogo
+- **90 produtos em 9 categorias** (Relógios, Perfumes, Beleza, Acessórios, Bem-estar, Natural, Eletrônicos, Moda, Casa), definidos em `src/lib/data.js`.
+- 2º lote (out/2026): 41 produtos novos (etiqueta **NOVO**) e fotos melhores em 13 produtos. Fotos em `public/img/nNN.webp`.
+- **Sincronização automática:** se o painel já estava ativado, ao entrar como **Dono** os produtos novos e as fotos melhores entram no banco sozinhos — sem sobrescrever preço, nome ou foto que você editou, e sem recriar produto que você excluiu. Próximos lotes: adicionar produtos com `since: N`, registrar trocas em `CATALOG_UPDATES[N]` e subir `CATALOG_VERSION`.
+
+## Vitrine
+- Banner com fotos reais de produtos, atalhos “Compre por categoria” com foto e faixa **Novidades na loja**.
+- Botão flutuante do WhatsApp (aparece quando o número estiver em *Painel → Loja*).
 
 ## No celular (pelo link, sem instalar nada)
 - Barra inferior de app: Início, Categorias, Buscar, Favoritos e Carrinho.
@@ -72,6 +81,7 @@ functions/            API (Cloudflare Pages Functions)
   api/orders/…        POST pedido (público) · GET listar · PATCH status · DELETE
   api/settings.js     PUT dados da loja
   api/import.js       POST substituir catálogo (ativação, backup, restaurar)
+  api/catalog-sync.js POST trazer novidades do catálogo para o banco (só Dono)
 src/main.js           vitrine
 src/admin.js          painel (carregado só ao abrir #admin)
 src/lib/              lógica compartilhada pela vitrine e pela API (validações, pedido, etc.)

@@ -189,3 +189,35 @@ export function passwordError(password, username = '') {
   return '';
 }
 export const nameError = (name) => (String(name ?? '').trim().length >= 2 && String(name).trim().length <= 60 ? '' : 'Informe um nome (2 a 60 caracteres).');
+
+/* ---------- Sincronização de catálogo (novas versões do código → banco/navegador) ---------- */
+/**
+ * Aplica as versões (fromVersion, toVersion] sobre o catálogo atual, sem desfazer edições do dono:
+ * - adiciona produtos com `since` na faixa que ainda não existam (pelo id);
+ * - troca fotos só de produtos que ainda usam apenas fotos originais do site (img/…);
+ * - troca nome/descrição só se o nome atual ainda for o antigo do catálogo (`fromName`).
+ * Devolve a lista nova e os ids adicionados/atualizados (para salvar só o que mudou).
+ */
+export function mergeCatalog(current, { fromVersion, toVersion, initial, updates }) {
+  const list = current.map((p) => ({ ...p }));
+  const byId = new Map(list.map((p) => [p.id, p]));
+  const added = [], updated = [];
+  for (let v = fromVersion + 1; v <= toVersion; v++) {
+    for (const p of initial) {
+      if (p.since === v && !byId.has(p.id)) {
+        const np = sanitizeProduct(p);
+        if (np) { list.push(np); byId.set(np.id, np); added.push(np.id); }
+      }
+    }
+    for (const [idStr, u] of Object.entries(updates?.[v] ?? {})) {
+      const p = byId.get(Number(idStr));
+      if (!p) continue;
+      let changed = false;
+      const original = (p.images ?? []).every((src) => src.startsWith('img/'));
+      if (u.images && original && JSON.stringify(p.images) !== JSON.stringify(u.images)) { p.images = [...u.images]; changed = true; }
+      if (u.name && u.fromName && p.name === u.fromName) { p.name = u.name; if (u.desc) p.desc = u.desc; changed = true; }
+      if (changed && !updated.includes(p.id)) updated.push(p.id);
+    }
+  }
+  return { products: list, added, updated };
+}

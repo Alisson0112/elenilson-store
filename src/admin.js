@@ -64,6 +64,15 @@ async function load() {
       backend.seeded = true;
       say('Painel ativado: o catálogo atual agora é editável.');
     }
+    if (isOwner() && d.seeded) { // novidades do catálogo (ex.: fotos novas) entram sem apagar suas edições
+      try {
+        const sync = await api('POST', '/api/catalog-sync');
+        if (sync.added.length || sync.updated.length) {
+          list = (await fetchCatalog(true)).products;
+          say(`Catálogo atualizado: ${sync.added.length} produto(s) novo(s) e ${sync.updated.length} foto(s) melhorada(s).`);
+        }
+      } catch (err) { console.warn('catalog-sync', err); }
+    }
     applySettings(d.settings);
     await ctx.setProducts(sanitizeProducts(list) ?? []);
     ctx.applyBranding();

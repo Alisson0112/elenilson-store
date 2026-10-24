@@ -33,7 +33,7 @@ export async function onRequestGet(context) {
   // WhatsApp não exibe WebP de forma confiável na prévia → usamos sempre uma versão JPEG
   const src = product.images[0];
   const ogPath = !src ? null
-    : /^img\/f\d+\.webp$/.test(src) ? src.replace(/^img\/(f\d+)\.webp$/, '/img/og/$1.jpg')
+    : /^img\/[fn]\d+\.webp$/.test(src) ? src.replace(/^img\/([fn]\d+)\.webp$/, '/img/og/$1.jpg')
     : src.startsWith('/api/img/') ? `${src.split('?')[0]}?size=og`
     : null;
   const image = ogPath ? new URL(ogPath, url.origin).href : `${url.origin}/og-image.jpg`;

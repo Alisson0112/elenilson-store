@@ -181,3 +181,35 @@ describe('contas', () => {
     expect(timingSafeEqual(new Uint8Array([1]), new Uint8Array([1, 2]))).toBe(false);
   });
 });
+
+import { mergeCatalog } from '../src/lib/logic.js';
+import { CATALOG_VERSION, CATALOG_UPDATES, initialProducts as realCatalog } from '../src/lib/data.js';
+describe('sincronização de catálogo', () => {
+  const v1 = realCatalog.filter((p) => !p.since).map((p) => ({ ...p }));
+  it('adiciona os 41 produtos novos e melhora as fotos do catálogo original', () => {
+    const old = v1.map((p) => (p.id === 38 ? { ...p, images: ['img/f18.webp', 'img/f07.webp'] } : p));
+    const r = mergeCatalog(old, { fromVersion: 1, toVersion: CATALOG_VERSION, initial: realCatalog, updates: CATALOG_UPDATES });
+    expect(r.added).toHaveLength(41);
+    expect(r.products).toHaveLength(90);
+    expect(r.updated).toContain(38);
+    expect(r.products.find((p) => p.id === 38).images).toEqual(['img/n19.webp']);
+    expect(r.products.find((p) => p.id === 90).tag).toBe('NOVO');
+  });
+  it('não sobrescreve edições do dono (foto enviada, nome alterado, preço) e não recria excluídos antigos', () => {
+    const edited = v1.filter((p) => p.id !== 3).map((p) => {
+      if (p.id === 38) return { ...p, images: ['/api/img/abc123def456'], price: 25 };
+      if (p.id === 21) return { ...p, name: 'Óleo de Abacate do Elenilson', images: ['img/f45.webp'] };
+      return p;
+    });
+    const r = mergeCatalog(edited, { fromVersion: 1, toVersion: 2, initial: realCatalog, updates: CATALOG_UPDATES });
+    const p38 = r.products.find((p) => p.id === 38), p21 = r.products.find((p) => p.id === 21);
+    expect(p38.images).toEqual(['/api/img/abc123def456']);
+    expect(p38.price).toBe(25);
+    expect(p21.name).toBe('Óleo de Abacate do Elenilson');
+    expect(r.products.some((p) => p.id === 3)).toBe(false);
+  });
+  it('produto novo que o dono já excluiu depois da sincronização não volta (idempotente por versão)', () => {
+    const r = mergeCatalog(v1, { fromVersion: 2, toVersion: 2, initial: realCatalog, updates: CATALOG_UPDATES });
+    expect(r.added).toEqual([]); expect(r.updated).toEqual([]);
+  });
+});
